@@ -13,6 +13,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { closestCenter, DndContext, DragOverlay, useDraggable, useDroppable } from "@dnd-kit/core";
 import { editorCanScroll } from "./editor-dnd-autoscroll";
 import { CalculationLinkBadge } from "../calculation/calculation-link-badge";
+import { conclusionSourceOf } from "@/features/valuations/calculation/conclusion-document";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -167,6 +168,13 @@ type ConceptCalculationLink = {
 
 const ConceptCalculationLinkContext = createContext<ConceptCalculationLink | null>(null);
 
+/** What each concept the conclusion fills is linked to, in words (`conclusionSourceLabels`); empty until the conclusion is read. */
+const ConclusionSourcesContext = createContext<Record<string, string>>({});
+
+export function ConclusionSourcesScope({ children, value }: { children: ReactNode; value: Record<string, string> }) {
+  return <ConclusionSourcesContext.Provider value={value}>{children}</ConclusionSourcesContext.Provider>;
+}
+
 /** The concepts of a section the calculation fills (the conclusion's) offer "Desvincular" as Costos does. */
 export function ConceptCalculationLinkScope({ children, value }: { children: ReactNode; value: ConceptCalculationLink | null }) {
   return <ConceptCalculationLinkContext.Provider value={value}>{children}</ConceptCalculationLinkContext.Provider>;
@@ -180,13 +188,19 @@ function unlinkFromCalculation(link: ConceptCalculationLink, conceptId: string) 
 
 function ConceptCalculationLinkBadge({ concept, readOnly }: { concept: Concept; readOnly: boolean }) {
   const link = useContext(ConceptCalculationLinkContext);
+  const sources = useContext(ConclusionSourcesContext);
   if (!link?.isCalculated(concept)) return null;
   const linked = !concept.calculationUnlinked;
   const unlink = () => unlinkFromCalculation(link, concept.id);
+  // Which value it is linked to (video 8.14, 49:02: «está vinculado… pero no sé a cuál»).
+  const source = conclusionSourceOf(concept, sources);
+  const labels = linked && source
+    ? { ...CONCLUSION_LINK_LABELS, linked: `Vinculado con: ${source}`, title: { ...CONCLUSION_LINK_LABELS.title, linked: `Vinculado con ${source}, en la conclusión` } }
+    : CONCLUSION_LINK_LABELS;
   return (
     <CalculationLinkBadge
       linked={linked}
-      labels={CONCLUSION_LINK_LABELS}
+      labels={labels}
       description={linked
         ? "El cálculo escribe este dato y lo actualiza cada vez que cambia la conclusión. Si lo escribes a mano, se desvincula solo."
         : "El cálculo ya no cambia este dato: se queda como lo escribiste. Al volver a vincularlo toma otra vez el valor del cálculo."}

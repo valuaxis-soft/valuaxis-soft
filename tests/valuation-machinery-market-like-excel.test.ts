@@ -216,7 +216,8 @@ test("layout step 3 fits the machinery market's columns, once, and «Deshacer» 
     blocks: [{ id: "motor-maquinaria-mercado", title: "ENFOQUE", sectionLabel: "", enabled: true, required: false, concepts: [], tables: [], images: [], apartados: [{ id: "h", title: "H", enabled: true, concepts: [], images: [], tables: [table as TableContent] }] }],
   };
   const step = LAYOUT_STEPS.find((item) => item.id === "machinery-market-tables")!;
-  assert.equal(step.version, LAYOUT_VERSION);
+  assert.equal(step.version, 3);
+  assert.ok(LAYOUT_VERSION >= step.version);
   const { sections, changes } = refreshDocumentLayout([section], [step]);
   assert.equal(changes.length, 1);
   assert.equal(layoutOf(sections[0].blocks[0].apartados[0].tables[0]).widths, undefined);

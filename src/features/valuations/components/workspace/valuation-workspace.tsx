@@ -85,6 +85,7 @@ import { sectionIconMap } from "./model/section-icons";
 import { sectionDisplayName } from "./model/section-numbering";
 import { useBlockMutations } from "./hooks/use-block-mutations";
 import { useCalculationDocumentSync } from "./hooks/use-calculation-document-sync";
+import { ConclusionSourcesScope } from "../editor/concept-editor";
 import { useLayoutRefresh } from "./hooks/use-layout-refresh";
 import type { LayoutRefreshPolicy } from "@/features/valuations/services/layout-refresh";
 import { useEditorHistoryShortcuts, useEditorState, type AppliedHistoryStep } from "./hooks/use-editor-state";
@@ -536,7 +537,7 @@ export function ValuationWorkspace({
     <LiveFormulaOwnerProvider owner={sectionLiveFormulaOwner(getCanonicalSectionKey(section.id), machinery)}>{panel}</LiveFormulaOwnerProvider>
   ) : undefined);
   const editorPanel = (
-    <>
+    <ConclusionSourcesScope value={calculationSync.conclusionSources}>
       {enabledSections.map((section) => (
         <TabsContent value={section.id} key={section.id}>
           <ValuationEditorPanel
@@ -652,7 +653,7 @@ export function ValuationWorkspace({
           />
         </TabsContent>
       ))}
-    </>
+    </ConclusionSourcesScope>
   );
 
   const previewPanel = (

@@ -44,8 +44,8 @@ export type MenuParts = {
 export const CONTEXT_PARTS: MenuParts = { Item: ContextMenuItem, Separator: ContextMenuSeparator, Sub: ContextMenuSub, SubTrigger: ContextMenuSubTrigger, SubContent: ContextMenuSubContent };
 export const DROPDOWN_PARTS: MenuParts = { Item: DropdownMenuItem, Separator: DropdownMenuSeparator, Sub: DropdownMenuSub, SubTrigger: DropdownMenuSubTrigger, SubContent: DropdownMenuSubContent };
 
-/** The units of "Unidades de valor": the concepts' own, less "Otra unidad" (the firm's are listed apart). */
-const TABLE_UNIT_OPTIONS = NUMERIC_VALUE_FORMAT_OPTIONS.filter((option) => option.value !== "custom");
+/** The units of "Unidades de valor": the concepts' own, less "Otra unidad" (the firm's are listed apart) and «En letra», a concept's format. */
+const TABLE_UNIT_OPTIONS = NUMERIC_VALUE_FORMAT_OPTIONS.filter((option) => option.value !== "custom" && option.value !== "words");
 
 const sameUnit = (a: TableValueUnit, b: TableValueUnit) =>
   a.kind === b.kind && (a.kind === "unit" || a.kind === "firm" ? a.unit === (b as typeof a).unit : true);

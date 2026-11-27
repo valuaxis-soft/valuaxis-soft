@@ -78,14 +78,12 @@ export function getInitialSectionTemplate(sectionKey: string, propertyKind?: str
   const clone = structuredClone(template);
   const { concludedValueLabel } = appraisedGoodWording(propertyKind, essence);
   if (canonical !== "CONCLUSIONES" || concludedValueLabel === CONCLUDED_VALUE_LABEL) return clone;
-  return {
-    ...clone,
-    blocks: clone.blocks.map((block) => ({
-      ...block,
-      concepts: block.concepts.map((concept) =>
-        concept.label === CONCLUDED_VALUE_LABEL ? { ...concept, label: concludedValueLabel } : concept),
-    })),
-  };
+  const named = <T extends { concepts: Array<{ label: string }> }>(container: T): T => ({
+    ...container,
+    concepts: container.concepts.map((concept) => (concept.label === CONCLUDED_VALUE_LABEL ? { ...concept, label: concludedValueLabel } : concept)),
+  });
+  // The concluded value is in its own subbloque since 27 Nov 2026.
+  return { ...clone, blocks: clone.blocks.map((block) => ({ ...named(block), apartados: block.apartados.map(named) })) };
 }
 
 /** The concluded value's concept in the conclusion template of the real estate books. */

@@ -9,7 +9,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { Textarea } from "@/components/ui/textarea";
 import { api } from "@/lib/api-client";
 import {
   SUMMARY_SOURCES,
@@ -36,6 +35,7 @@ import { marketLeftOut } from "@/features/valuations/services/report-approaches"
 import { formatMoneyForDocument } from "@/features/valuations/services/concept-value-format";
 import { SaveRefusedNotice, saveRefusedMessage } from "./save-refused";
 import { conclusiveLabelRefusal } from "@/features/valuations/services/intangible-labels";
+import { CONCLUSION_KEYS, conclusionSourceLabels } from "@/features/valuations/calculation/conclusion-document";
 
 const APPROACHES: Approach[] = ["costos", "mercado", "ingresos"];
 const weightPath = (approach: Approach) => `method.weights.${approach}`;
@@ -155,13 +155,18 @@ function ConclusionSummaryEditor({
   );
 }
 
-/** Concluded value: which approach (or weights) and why, from the values each approach stored. */
-/** The value of each approach, or why it has none. */
+/**
+ * Why an approach has no value, or that it is left out of the report: only
+ * those. The values themselves are listed once, in the resumen de valores
+ * (video 8.15, 3:36: «no necesito tener tantas veces esto»).
+ */
 export function ApproachValues({ calculation, machinery = false }: { calculation: ConclusionCalculationDto; machinery?: boolean }) {
   const reasons = machinery ? MACHINERY_UNAVAILABLE_REASONS : APPROACH_UNAVAILABLE_REASONS;
+  const missing = APPROACHES.filter((approach) => leftOut(calculation, approach) || calculation.values[approach] === null);
+  if (!missing.length) return null;
   return (
-    <dl className="grid gap-x-4 gap-y-1 rounded-md border bg-background p-3 text-sm sm:grid-cols-3">
-      {APPROACHES.map((approach) => (
+    <dl className="grid gap-x-4 gap-y-1 rounded-md border bg-background p-3 text-sm sm:grid-cols-3" data-approaches-without-value>
+      {missing.map((approach) => (
         <div key={approach}>
           <dt className="text-xs text-muted-foreground">
             {APPROACH_LABELS[approach]}
@@ -295,10 +300,11 @@ export function ConclusionPanel(props: {
         {saving ? <Loader2 className="size-4 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
       </header>
 
-      <div className="grid gap-2">
-        <h4 className={CALC_SECTION_HEADING}>Valores de los enfoques</h4>
-        <ApproachValues calculation={calculation} machinery={props.machinery} />
-      </div>
+      <p className="text-xs text-muted-foreground">
+        La conclusión se imprime con los subbloques de su bloque, en el orden que les des: resumen de valores, gráfica de valores, cómo se concluye,
+        el valor concluido con su cifra en letra y la firma. Aquí eliges qué valores lleva el resumen y con cuál se concluye.
+      </p>
+      <ApproachValues calculation={calculation} machinery={props.machinery} />
 
       <ConclusionSummaryEditor
         calculation={calculation}
@@ -327,21 +333,6 @@ export function ConclusionPanel(props: {
             </span>
           </label>
         ) : null}
-        <label className="flex items-start gap-2">
-          <Checkbox
-            className="mt-0.5"
-            checked={calculation.valueChart === true}
-            onCheckedChange={(checked) => {
-              const on = checked === true;
-              setCalculation({ ...calculation, valueChart: on });
-              save({ valueChart: on });
-            }}
-          />
-          <span>
-            Imprimir la gráfica de los valores
-            <span className="block text-xs text-muted-foreground">Barras con los valores del resumen, bajo ellos en la conclusión del dictamen. Opcional.</span>
-          </span>
-        </label>
       </fieldset>
 
       <h4 className={CALC_SECTION_HEADING}>Cómo se concluye</h4>
@@ -394,28 +385,22 @@ export function ConclusionPanel(props: {
             }}
           />
         </Field>
-        <Field className="sm:col-span-2">
-          <FieldLabel htmlFor="conclusion-justification">Justificación</FieldLabel>
-          <Textarea
-            id="conclusion-justification"
-            rows={2}
-            value={justification}
-            onChange={(event) => setJustification(event.target.value)}
-            onBlur={() => save({})}
-          />
-        </Field>
       </fieldset>
+      {/* The justification written here before printed nothing: it is shown so it can be taken to «Cómo se concluye», which prints. */}
+      {justification.trim() ? (
+        <p className="rounded-md border bg-background p-2 text-xs text-muted-foreground" data-legacy-justification>
+          Justificación escrita antes aquí (no se imprime): «{justification.trim()}». Escríbela en el subbloque «Cómo se concluye» para que salga en el dictamen.
+        </p>
+      ) : null}
 
       {result ? (
-        <div className="rounded-md border bg-background p-3">
-          <p className="text-xs text-muted-foreground">
-            Valor concluido{summaryRows.length === 1 ? ` · ${summaryRows[0].label}` : ""}
-            {" "}· su nombre en el dictamen se cambia en el bloque de la conclusión y sigue recibiendo el valor
-          </p>
-          {/* As the dictamen prints it: "$2,200,000.00 M.N.". */}
-          <p className="text-lg font-semibold tabular-nums" data-concluded-value>{formatMoneyForDocument(result.value, { legalTender: true })}</p>
-          <p className="text-xs text-muted-foreground">{result.valueInWords}</p>
-        </div>
+        // Which value the concluded value is linked to, in one line: the figure itself is in its subbloque (video 8.14, 49:02).
+        <p className="text-sm" data-concluded-value-link>
+          <span className="text-muted-foreground">El valor concluido está vinculado con </span>
+          <span className="font-medium">{conclusionSourceLabels(current)[CONCLUSION_KEYS.value]}</span>
+          <span className="text-muted-foreground">: </span>
+          <span className="font-semibold tabular-nums" data-concluded-value>{formatMoneyForDocument(result.value, { legalTender: true })}</span>
+        </p>
       ) : (
         <p className="text-sm text-muted-foreground">
           {summaryRows.length === 1

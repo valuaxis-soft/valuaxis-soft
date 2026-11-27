@@ -10,12 +10,12 @@
  * it again (auditoría, nov 2026: a "Valor concluido" written by hand came back
  * as the calculation's on every sync).
  */
-import type { ConclusionResult } from "../engine/conclusion";
+import { APPROACH_LABELS, type Approach, type ConclusionResult } from "../engine/conclusion";
 import { roundIfSet } from "../engine/rounding";
 import type { AppSection, Block, Concept, ConceptValueFormat } from "../model";
 import { appraisedGoodWording } from "../services/appraised-good-wording";
 import type { ValuationSignature } from "../services/valuation-signatures";
-import { conclusionEngineConfig, summaryRowValues, type ConclusionCalculationDto } from "./conclusion-types";
+import { SUMMARY_SOURCE_LABELS, conclusionEngineConfig, summaryRowValues, type ConclusionCalculationDto } from "./conclusion-types";
 import { MACHINERY_PROPERTY_TYPE } from "./machinery-types";
 
 const NOT_APPLICABLE = "NO APLICA";
@@ -154,38 +154,87 @@ export function signatureConceptValues(signatures: ReadonlyArray<Pick<ValuationS
   };
 }
 
+/** The concepts of a block or of one of its subbloques, by the container's id. */
+type ConceptContainer = { id: string; concepts: Concept[] };
+
+const containersOf = (section: AppSection): ConceptContainer[] =>
+  section.blocks.flatMap((block) => [block, ...block.apartados]);
+
 /**
- * The concepts of the resumen de valores in the block of the concluded value:
- * the rows the appraiser chose, under the names he wrote, in place of the
- * three approaches. Without rows the block keeps its approach concepts. With
+ * Where the resumen de valores lives: the block or subbloque that holds its
+ * rows (since 27 Nov 2026 its own subbloque, «RESUMEN DE VALORES», video
+ * 8.15), else the one of the concluded value, as the conclusion was before.
+ */
+function summaryContainerId(section: AppSection): string | null {
+  const containers = containersOf(section);
+  return (containers.find((container) => container.concepts.some(isSummaryConcept))
+    ?? containers.find((container) => container.concepts.some(isConcludedConcept)))?.id ?? null;
+}
+
+/** The section with the concepts of one container changed; the same section when nothing changed. */
+function withContainerConcepts(section: AppSection, id: string, change: (concepts: Concept[]) => Concept[]): AppSection {
+  let changed = false;
+  const blocks = section.blocks.map((block): Block => {
+    if (block.id === id) {
+      const concepts = change(block.concepts);
+      if (concepts === block.concepts) return block;
+      changed = true;
+      return { ...block, concepts };
+    }
+    const apartados = block.apartados.map((apartado) => {
+      if (apartado.id !== id) return apartado;
+      const concepts = change(apartado.concepts);
+      if (concepts === apartado.concepts) return apartado;
+      changed = true;
+      return { ...apartado, concepts };
+    });
+    return apartados.every((apartado, index) => apartado === block.apartados[index]) ? block : { ...block, apartados };
+  });
+  return changed ? { ...section, blocks } : section;
+}
+
+/** Where new rows of the resumen go: where its first row was, else before the concluded value, else at the end. */
+function summaryInsertionPoint(concepts: Concept[], kept: Concept[]) {
+  const first = concepts.findIndex(isSummaryConcept);
+  if (first !== -1) return concepts.slice(0, first).filter((concept) => !isSummaryConcept(concept)).length;
+  const concluded = kept.findIndex(isConcludedConcept);
+  return concluded === -1 ? kept.length : concluded;
+}
+
+/**
+ * The concepts of the resumen de valores: the rows the appraiser chose, under
+ * the names he wrote, in place of the three approaches, in the block or
+ * subbloque of the resumen. Without rows it keeps its approach concepts. With
  * one row and "the concluded value takes its name" (V7.3-28), the concluded
- * value prints under that row's name.
+ * value prints under that row's name, wherever it is.
  */
 export function withSummaryRowConcepts(section: AppSection, calculation: Pick<ConclusionCalculationDto, "summaryRows" | "available" | "concludedNameFromRow">): AppSection {
   const rows = summaryRowValues(calculation);
   if (!rows.length) return withApproachConcepts(section);
-  const concludedName = rows.length === 1 && calculation.concludedNameFromRow ? rows[0].label : null;
-  let changed = false;
-  const blocks = section.blocks.map((block): Block => {
-    const concluded = block.concepts.findIndex(isConcludedConcept);
-    if (concluded === -1) return block;
-    const current = block.concepts.filter(isSummaryConcept);
-    const next = rows.map((row, index): Concept => {
+  const target = summaryContainerId(section);
+  if (!target) return section;
+  let next = withContainerConcepts(section, target, (concepts) => {
+    const current = concepts.filter(isSummaryConcept);
+    const wanted = rows.map((row, index): Concept => {
       const existing = current[index];
       if (existing?.id !== summaryConceptId(index)) return { id: summaryConceptId(index), label: row.label, value: "", enabled: true };
       return existing.label === row.label ? existing : { ...existing, label: row.label };
     });
-    const same = current.length === next.length && current.every((concept, index) => concept === next[index]);
-    const renamed = concludedName !== null && block.concepts[concluded].label !== concludedName;
-    if (same && !renamed) return block;
-    changed = true;
-    const kept = (same ? block.concepts : block.concepts.filter((concept) => !isSummaryConcept(concept)))
-      .map((concept) => (renamed && isConcludedConcept(concept) ? { ...concept, label: concludedName, calculationKey: CONCLUSION_KEYS.value } : concept));
-    if (same) return { ...block, concepts: kept };
-    const at = kept.findIndex(isConcludedConcept);
-    return { ...block, concepts: [...kept.slice(0, at), ...next, ...kept.slice(at)] };
+    if (current.length === wanted.length && current.every((concept, index) => concept === wanted[index])) return concepts;
+    const kept = concepts.filter((concept) => !isSummaryConcept(concept));
+    const at = summaryInsertionPoint(concepts, kept);
+    return [...kept.slice(0, at), ...wanted, ...kept.slice(at)];
   });
-  return changed ? { ...section, blocks } : section;
+  const concludedName = rows.length === 1 && calculation.concludedNameFromRow ? rows[0].label : null;
+  if (concludedName !== null) {
+    for (const container of containersOf(next)) {
+      if (!container.concepts.some((concept) => isConcludedConcept(concept) && concept.label !== concludedName)) continue;
+      next = withContainerConcepts(next, container.id, (concepts) => concepts.map((concept) => (
+        isConcludedConcept(concept) && concept.label !== concludedName ? { ...concept, label: concludedName, calculationKey: CONCLUSION_KEYS.value } : concept
+      )));
+    }
+  }
+  return next;
 }
 
 /** The three approaches as the template lists them, for a block that lost them to the rows of the resumen. */
@@ -196,31 +245,65 @@ const APPROACH_CONCEPTS: ReadonlyArray<{ key: ConclusionKey; label: string }> = 
 ];
 
 /**
- * Without rows in the resumen, the block of the concluded value lists the
- * three approaches as always: the rows the appraiser removed go, and the
- * approaches they had replaced come back before the concluded value (FAL-03:
- * removing the last row left the block without them). An approach the block
- * still has stays as it is, under the name he gave it.
+ * Without rows in the resumen, the resumen lists the three approaches as
+ * always: the rows the appraiser removed go, and the approaches they had
+ * replaced come back in their place (FAL-03: removing the last row left the
+ * block without them). An approach still there stays as it is, under the
+ * name he gave it.
  */
 function withApproachConcepts(section: AppSection): AppSection {
-  let changed = false;
-  const blocks = section.blocks.map((block): Block => {
-    if (!block.concepts.some(isConcludedConcept) || !block.concepts.some((concept) => concept.id.startsWith(SUMMARY_CONCEPT_PREFIX))) return block;
-    changed = true;
-    const kept = block.concepts.filter((concept) => !concept.id.startsWith(SUMMARY_CONCEPT_PREFIX));
+  const target = containersOf(section).find((container) => container.concepts.some((concept) => concept.id.startsWith(SUMMARY_CONCEPT_PREFIX)));
+  if (!target) return section;
+  return withContainerConcepts(section, target.id, (concepts) => {
+    const kept = concepts.filter((concept) => !concept.id.startsWith(SUMMARY_CONCEPT_PREFIX));
     const present = new Set(kept.map((concept) => conceptCalculationKey(concept)));
     const restored = APPROACH_CONCEPTS.filter((approach) => !present.has(approach.key)).map((approach): Concept => ({
-      id: `${block.id}-${approach.key.replace(/[^a-z]+/g, "-")}`,
+      id: `${target.id}-${approach.key.replace(/[^a-z]+/g, "-")}`,
       label: approach.label,
       value: "",
       enabled: true,
       calculationKey: approach.key,
     }));
-    const at = kept.findIndex(isConcludedConcept);
-    return { ...block, concepts: [...kept.slice(0, at), ...restored, ...kept.slice(at)] };
+    const first = concepts.findIndex((concept) => concept.id.startsWith(SUMMARY_CONCEPT_PREFIX));
+    const at = concepts.slice(0, first).filter((concept) => !concept.id.startsWith(SUMMARY_CONCEPT_PREFIX)).length;
+    return [...kept.slice(0, at), ...restored, ...kept.slice(at)];
   });
-  return changed ? { ...section, blocks } : section;
 }
+
+/**
+ * What each concept the conclusion fills is linked to, in words, for its
+ * badge in the editor (video 8.14, 49:02: «está vinculado… pero no sé a cuál»):
+ * by key (the rows of the resumen by their id).
+ */
+export function conclusionSourceLabels(calculation: ConclusionCalculationDto): Record<string, string> {
+  const rows = summaryRowValues(calculation);
+  const method = calculation.method;
+  const concluded = rows.length === 1
+    ? SUMMARY_SOURCE_LABELS[rows[0].source]
+    : method.kind === "weighted"
+      ? `Ponderación de enfoques (${(Object.entries(method.weights) as Array<[Approach, number | undefined]>)
+          .filter(([, weight]) => (weight ?? 0) > 0)
+          .map(([approach, weight]) => `${APPROACH_LABELS[approach].toLowerCase()} ${Math.round((weight ?? 0) * 100)} %`).join(", ")})`
+      : APPROACH_LABELS[method.approach];
+  return {
+    ...Object.fromEntries(rows.map((row, index) => [summaryConceptId(index), SUMMARY_SOURCE_LABELS[row.source]])),
+    [CONCLUSION_KEYS.costos]: APPROACH_LABELS.costos,
+    [CONCLUSION_KEYS.mercado]: APPROACH_LABELS.mercado,
+    [CONCLUSION_KEYS.ingresos]: APPROACH_LABELS.ingresos,
+    [CONCLUSION_KEYS.value]: concluded,
+    [CONCLUSION_KEYS.words]: `${concluded}, en letra`,
+    [CONCLUSION_KEYS.caratulaValue]: concluded,
+    [CONCLUSION_KEYS.caratulaWords]: `${concluded}, en letra`,
+    [CONCLUSION_KEYS.signerName]: "Firmas de la carátula",
+    [CONCLUSION_KEYS.signerCedula]: "Firmas de la carátula",
+  };
+}
+
+/** What a concept of the conclusion is linked to, from `conclusionSourceLabels`. */
+export function conclusionSourceOf(concept: Pick<Concept, "id" | "label" | "calculationKey">, sources: Record<string, string>): string | null {
+  return sources[concept.id] ?? sources[conceptCalculationKey(concept) ?? ""] ?? null;
+}
+
 
 /** Key → value of the carátula conclusion concepts. */
 export function caratulaConclusionValues(result: ConclusionResult): Record<string, ConclusionConceptValue> {
@@ -284,8 +367,13 @@ export function isConcludedValueBlock(block: Pick<Block, "concepts">) {
   return block.concepts.some(isConcludedConcept);
 }
 
-/** "Gráfica de los valores" chosen in the panel (V7.1-26): the block of the concluded value prints it. */
+/**
+ * "Gráfica de los valores" chosen in the panel (V7.1-26): the block of the
+ * concluded value prints it. A conclusion with the chart as a subbloque of its
+ * own (since 27 Nov 2026) shows or hides that subbloque instead, as any other.
+ */
 export function withValueChart(section: AppSection, on: boolean): AppSection {
+  if (section.blocks.some((block) => block.apartados.some((apartado) => apartado.valueChart))) return section;
   let changed = false;
   const blocks = section.blocks.map((block): Block => {
     if (!isConcludedValueBlock(block) || Boolean(block.valueChart) === on) return block;

@@ -22,7 +22,7 @@
 import { CONCLUSION_KEYS, conceptCalculationKey, isSummaryConcept } from "../calculation/conclusion-document";
 import { applyTableLayout, layoutOf, sourceOf } from "../calculation/generated-table-layout";
 import { DEFAULT_HOMOLOGATION_NOTE } from "../calculation/market-document";
-import type { AppSection, Block, Concept, TableContent } from "../model";
+import type { Apartado, AppSection, Block, Concept, TableContent } from "../model";
 import { conclusionesSection } from "../sections/conclusiones";
 import { getCanonicalSectionKey } from "../sections/section-registry";
 import { contentLayoutWithOwnRowFor } from "./content-layout";
@@ -46,7 +46,13 @@ export type LayoutChange =
   | { step: string; kind: "concept-keyed"; sectionId: string; blockId: string; conceptId: string; calculationKey: string }
   | { step: string; kind: "block-added"; sectionId: string; blockId: string; title: string }
   /** A table as it was before the step changed it (by id, in its block or subbloque): «Deshacer» puts it back. */
-  | { step: string; kind: "table-changed"; sectionId: string; blockId: string; tableId: string; previous: TableContent };
+  | { step: string; kind: "table-changed"; sectionId: string; blockId: string; tableId: string; previous: TableContent }
+  /**
+   * A block whose content the step arranged in subbloques of its own (`parts`):
+   * «Deshacer» takes the content back out of them, in the order of `previous`,
+   * with whatever was written since.
+   */
+  | { step: string; kind: "block-changed"; sectionId: string; blockId: string; previous: Block; parts: string[] };
 
 type LayoutStep = {
   version: number;
@@ -129,7 +135,11 @@ function conclusionValueStep(sections: AppSection[]): { sections: AppSection[]; 
       ...template,
       id: blockId,
       concepts: template.concepts.map((concept) => ({ ...concept, id: freeId(concept.id, used) })),
-      apartados: [],
+      apartados: template.apartados.map((apartado) => ({
+        ...apartado,
+        id: freeId(apartado.id, used),
+        concepts: apartado.concepts.map((concept) => ({ ...concept, id: freeId(concept.id, used) })),
+      })),
     };
     changes.push({ step, kind: "block-added", sectionId: section.id, blockId, title: block.title });
     blocks = [block, ...section.blocks];
@@ -172,6 +182,82 @@ function conclusionValueStep(sections: AppSection[]): { sections: AppSection[]; 
 
   const next = sections.map((item, index) => (index === sectionIndex ? { ...section, blocks } : item));
   return { sections: next, changes };
+}
+
+const sameTitle = (left: string, right: string) => normalize(left) === normalize(right);
+
+/**
+ * The conclusion as the appraiser's Excel (videos 8.14, 51:16 and 8.15, 27
+ * Nov 2026: «la conclusión me la tienen como si fuera un bloque… yo lo tengo
+ * así… como un subbloque»): the block that held the resumen, the chart and
+ * the concluded value in one fixed piece is arranged in subbloques, in his
+ * order: resumen de valores, gráfica de valores (shown if the chart was on),
+ * cómo se concluye (the rest of what the block held: his text, the
+ * observations) and the concluded value with its amount in words, without a
+ * printed title or number. Each moves, hides and is edited as any subbloque;
+ * his values, names, formats and subbloques of before stay. A FIRMAS block
+ * stays where it is.
+ */
+function conclusionSubblocksStep(sections: AppSection[]): { sections: AppSection[]; changes: LayoutChange[] } {
+  const step = "conclusion-subblocks";
+  const sectionIndex = sections.findIndex((section) => getCanonicalSectionKey(section.id) === "CONCLUSIONES" && !section.removed);
+  if (sectionIndex === -1) return { sections, changes: [] };
+  const section = sections[sectionIndex];
+  const blockIndex = section.blocks.findIndex((block) => block.concepts.some((concept) => keyOf(concept) === CONCLUSION_KEYS.value));
+  if (blockIndex === -1) return { sections, changes: [] };
+  const block = section.blocks[blockIndex];
+  const used = sectionIds(section);
+  const isValue = (concept: Concept) => keyOf(concept) === CONCLUSION_KEYS.value || keyOf(concept) === CONCLUSION_KEYS.words;
+  const summary = block.concepts.filter(isSummaryConcept);
+  const value = block.concepts.filter(isValue);
+  const rest = block.concepts.filter((concept) => !isSummaryConcept(concept) && !isValue(concept));
+  const part = (id: string, title: string, concepts: Concept[], extra: Partial<Apartado> = {}): Apartado => ({
+    id: freeId(`${block.id}-${id}`, used), title, enabled: true, concepts, tables: [], images: [], ...extra,
+  });
+  const parts: Apartado[] = [
+    // A block already titled «Resumen de valores» does not print it twice.
+    part("resumen-de-valores", "RESUMEN DE VALORES", summary, sameTitle(block.title, "RESUMEN DE VALORES") ? { titleHidden: true } : {}),
+    part("grafica-de-valores", "GRÁFICA DE VALORES", [], { valueChart: true, enabled: Boolean(block.valueChart) }),
+    ...(rest.length || block.tables.length || block.images.length
+      ? [part("como-se-concluye", "CÓMO SE CONCLUYE", rest, { tables: block.tables, images: block.images })]
+      : []),
+    part("valor-concluido", "VALOR CONCLUIDO", value, { titleHidden: true }),
+  ];
+  const { valueChart: _chart, contentLayout: _layout, blockFlow: _flow, ...kept } = block;
+  const arranged: Block = { ...kept, concepts: [], tables: [], images: [], apartados: [...parts, ...block.apartados] };
+  const blocks = section.blocks.map((item, index) => (index === blockIndex ? arranged : item));
+  return {
+    sections: sections.map((item, index) => (index === sectionIndex ? { ...section, blocks } : item)),
+    changes: [{ step, kind: "block-changed", sectionId: section.id, blockId: block.id, previous: block, parts: parts.map((item) => item.id) }],
+  };
+}
+
+/**
+ * The block as it was before the step arranged it in subbloques, with what
+ * was written since: its concepts come out of the step's subbloques in their
+ * order of before (one added in them since goes after), its tables and
+ * images too, and the subbloques of the appraiser stay.
+ */
+function unarranged(block: Block, change: Extract<LayoutChange, { kind: "block-changed" }>): Block {
+  const parts = new Set(change.parts);
+  const moved = block.apartados.filter((apartado) => parts.has(apartado.id));
+  const current = new Map(moved.flatMap((apartado) => apartado.concepts).map((concept) => [concept.id, concept]));
+  const concepts = [
+    ...change.previous.concepts.flatMap((concept) => (current.has(concept.id) ? [current.get(concept.id)!] : [])),
+    ...[...current.values()].filter((concept) => !change.previous.concepts.some((item) => item.id === concept.id)),
+    ...block.concepts,
+  ];
+  const { valueChart, contentLayout, blockFlow } = change.previous;
+  return {
+    ...block,
+    concepts,
+    tables: [...moved.flatMap((apartado) => apartado.tables), ...block.tables],
+    images: [...moved.flatMap((apartado) => apartado.images), ...block.images],
+    apartados: block.apartados.filter((apartado) => !parts.has(apartado.id)),
+    ...(valueChart ? { valueChart } : {}),
+    ...(contentLayout ? { contentLayout } : {}),
+    ...(blockFlow ? { blockFlow } : {}),
+  };
 }
 
 /** The market pages the calculation writes: their tables auto-fit their columns once the widths given before are dropped. */
@@ -283,6 +369,13 @@ export const LAYOUT_STEPS: readonly LayoutStep[] = [
     description: "Las tablas del mercado de maquinaria y equipo ajustan sus columnas a su contenido, como las de los mercados de inmuebles.",
     apply: machineryMarketTablesStep,
   },
+  {
+    version: 4,
+    id: "conclusion-subblocks",
+    since: "2026-11-27",
+    description: "La conclusión queda en subbloques, como el Excel: resumen de valores, gráfica de valores, cómo se concluye y el valor concluido con su cifra en letra, cada uno movible y editable.",
+    apply: conclusionSubblocksStep,
+  },
 ];
 
 /** The current version of the format. */
@@ -365,11 +458,13 @@ export function revertLayoutRefresh(sections: AppSection[], changes: readonly La
     return rest;
   };
   const previousTables = new Map(changes.flatMap((change) => (change.kind === "table-changed" ? [[`${change.blockId}|${change.tableId}`, change.previous] as const] : [])));
+  const arranged = new Map(changes.flatMap((change) => (change.kind === "block-changed" ? [[change.blockId, change] as const] : [])));
   const untouch = (blockId: string) => (table: TableContent) => previousTables.get(`${blockId}|${table.id}`) ?? table;
   const reverted = sections.map((section) => (!sectionIds.has(section.id) ? section : {
     ...section,
     blocks: section.blocks
       .filter((block) => !addedBlocks.has(block.id))
+      .map((block) => (arranged.has(block.id) ? unarranged(block, arranged.get(block.id)!) : block))
       .map((block) => ({
         ...block,
         concepts: block.concepts.filter((concept) => !addedConcepts.has(concept.id)).map(unkey),

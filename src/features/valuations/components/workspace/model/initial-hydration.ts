@@ -248,6 +248,8 @@ function normalizeInitialSections(initialValuation: Pick<ValuationDetail, "secti
         id: subBlock.id,
         title: subBlock.title,
         ...(subBlock.titleHidden ? { titleHidden: true } : {}),
+        ...(subBlock.valueChart ? { valueChart: true } : {}),
+        ...(subBlock.valueChartStyle ? { valueChartStyle: subBlock.valueChartStyle } : {}),
         enabled: subBlock.enabled !== false,
         startOnNewPage: subBlock.startOnNewPage ?? false,
         ...(subBlock.pageBreak ? { pageBreak: subBlock.pageBreak } : {}),

@@ -1,4 +1,4 @@
-import type { BlockFlowV2, ConceptDateFormat, ConceptType, ConceptValueFormat, ContentLayout, HeaderExtraField, ImageCaption, ImageLayoutWidth, ImageRotation, ApartadoPresentationMode } from "@/features/valuations/model";
+import type { BlockFlowV2, ConceptDateFormat, ConceptType, ConceptValueFormat, ContentLayout, HeaderExtraField, ImageCaption, ImageLayoutWidth, ImageRotation, ApartadoPresentationMode, ValueChartStyle } from "@/features/valuations/model";
 import { readStoredCaptions, readStoredRotation } from "@/features/valuations/services/image-captions";
 import { isDefaultImageFraming, readStoredImageFraming, type ImageFraming } from "@/features/valuations/services/image-framing";
 import { readCroquisMarker, type CroquisImageMarker } from "@/features/maps/croquis-marker";
@@ -145,7 +145,14 @@ export type ApartadoMetadata = {
   conceptPresentation?: ConceptPresentation;
   presentationMode?: ApartadoPresentationMode;
   flowSpacingBeforePx?: number;
+  /** The conclusion's subbloque of the chart of the values, and its style. */
+  valueChart?: boolean;
+  valueChartStyle?: ValueChartStyle;
 };
+
+const VALUE_CHART_STYLES: readonly ValueChartStyle[] = ["bars", "bars-3d", "horizontal"];
+const readValueChartStyle = (value: unknown): ValueChartStyle | undefined =>
+  (isRecord(value) && VALUE_CHART_STYLES.includes(value.valueChartStyle as ValueChartStyle) ? value.valueChartStyle as ValueChartStyle : undefined);
 
 /* ------------------------------------------------------------------ */
 /*  Flow spacing canonical capability                                  */
@@ -376,6 +383,8 @@ export function apartadoMetadataFromContent(content: ApartadoMetadataContent): A
     conceptPresentation: content.conceptPresentation,
     presentationMode: content.presentationMode,
     flowSpacingBeforePx: content.flowSpacingBeforePx,
+    ...(content.valueChart ? { valueChart: true } : {}),
+    ...(content.valueChart && content.valueChartStyle && content.valueChartStyle !== "bars" ? { valueChartStyle: content.valueChartStyle } : {}),
   };
 }
 
@@ -391,6 +400,8 @@ export function hydrateApartadoMetadata(config: unknown): ApartadoMetadata {
     conceptPresentation: parseConceptPresentation(config),
     presentationMode: parsePresentationMode(config),
     flowSpacingBeforePx: readFlowSpacingBeforePx(config),
+    ...(readConfigMetadata(config, (value) => readBooleanMetadata(value, "valueChart")) ? { valueChart: true } : {}),
+    ...(readConfigMetadata(config, readValueChartStyle) ? { valueChartStyle: readConfigMetadata(config, readValueChartStyle) } : {}),
   };
 }
 
@@ -528,6 +539,7 @@ function readConceptValueFormat(value: unknown): ConceptValueFormat | undefined 
     valueFormat === "kg" ||
     valueFormat === "g" ||
     valueFormat === "l" ||
+    valueFormat === "words" ||
     valueFormat === "custom"
     ? valueFormat
     : undefined;

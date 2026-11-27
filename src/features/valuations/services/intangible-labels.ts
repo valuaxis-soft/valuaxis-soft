@@ -55,7 +55,14 @@ export function conclusiveLabelRefusal(text: string): string | null {
 }
 
 type LabelledConcept = { id?: string; label?: string; calculationKey?: string };
-type TitledBlock = { id?: string; title?: string; concepts?: LabelledConcept[] };
+type TitledBlock = {
+  id?: string;
+  title?: string;
+  concepts?: LabelledConcept[];
+  /** Its subbloques: the editor's (`apartados`) or the saved payload's (`subBlocks`). */
+  apartados?: TitledBlock[];
+  subBlocks?: TitledBlock[];
+};
 type TitledSection = { id?: string; blocks?: TitledBlock[] };
 
 /**
@@ -66,11 +73,17 @@ type TitledSection = { id?: string; blocks?: TitledBlock[] };
 function conclusiveNames(section: TitledSection): string[] {
   const key = getCanonicalSectionKey(section.id ?? "");
   if (key !== "CONCLUSIONES" && key !== "CARATULA") return [];
+  const calculated = (container: TitledBlock) => (container.concepts ?? []).filter((concept) =>
+    isConclusionCalculatedConcept(key, { id: concept.id ?? "", label: concept.label ?? "", calculationKey: concept.calculationKey }));
   return (section.blocks ?? []).flatMap((block) => {
     const titled = key === "CONCLUSIONES" || getCaratulaBlockKind({ id: block.id ?? "", title: block.title ?? "" }) === "conclusion";
-    const concepts = (block.concepts ?? []).filter((concept) =>
-      isConclusionCalculatedConcept(key, { id: concept.id ?? "", label: concept.label ?? "", calculationKey: concept.calculationKey }));
-    return [...(titled && block.title ? [block.title] : []), ...concepts.map((concept) => concept.label ?? "")];
+    // The conclusion's subbloques (resumen, concluded value…) since 27 Nov 2026: their titles and values too.
+    const parts = key === "CONCLUSIONES" ? [...(block.apartados ?? []), ...(block.subBlocks ?? [])] : [];
+    return [
+      ...(titled && block.title ? [block.title] : []),
+      ...calculated(block).map((concept) => concept.label ?? ""),
+      ...parts.flatMap((part) => [...(part.title ? [part.title] : []), ...calculated(part).map((concept) => concept.label ?? "")]),
+    ];
   });
 }
 
