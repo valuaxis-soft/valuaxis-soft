@@ -92,7 +92,7 @@ import {
   linkableCardFields,
   linkedColumnId,
   specLabel,
-  withCardFieldLabel,
+  renamedCardField,
   withLinkedColumn,
   type MarketLinkTable,
 } from "@/features/valuations/calculation/market-table-columns";
@@ -859,12 +859,8 @@ function MarketTypePanel(props: {
     const settings = session.current?.view.settings ?? liveSettings;
     return settings ? marketColumnField(settings, table, columnId) : null;
   };
-  /** A datum of the card renamed from its column: the list of characteristics keeps the names of its own, the rest the market's names. */
-  const renameField = (key: string, label: string) => patchSettings((current) => {
-    const list = characteristicFieldsOf(current);
-    if (list.some((field) => field.key === key)) return { characteristicFields: list.map((field) => (field.key === key ? { ...field, label: label.trim() } : field)) };
-    return { fieldLabels: withCardFieldLabel(current.fieldLabels, key, label) };
-  });
+  /** A datum of the card renamed from its column or from the card: one name in both (market-table-columns.ts). */
+  const renameField = (key: string, label: string) => patchSettings((current) => renamedCardField(current, key, label));
   const toggleLinked = (table: MarketLinkTable, key: string, on?: boolean) => patchSettings((current) => {
     const linked = current.linkedColumns?.[table] ?? [];
     return { linkedColumns: withLinkedColumn(current.linkedColumns, table, key, on ?? !linked.includes(key)) };
@@ -1546,6 +1542,7 @@ function MarketTypePanel(props: {
           comparable={editingComparable ? cardOf(comparables.find((item) => item.id === editingComparable.id) ?? editingComparable) : null}
           characteristicFields={fields}
           fieldLabels={cardFieldLabels(liveSettings)}
+          onRenameField={readOnly ? undefined : renameField}
           comparableType={type}
           unitLabel={priceLabel}
           readOnly={readOnly}

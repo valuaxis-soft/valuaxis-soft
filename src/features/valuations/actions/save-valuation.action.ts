@@ -14,6 +14,8 @@ import {
 import { AUTH_PERMISSIONS } from "@/features/auth/model";
 import { hasPermission } from "@/features/auth/permissions";
 import { applyFirmDocumentPalette } from "@/features/firm/document-palette.service";
+import { withCurrentLayout } from "@/features/valuations/services/layout-refresh";
+import { stampCurrentLayoutVersion } from "@/features/valuations/services/layout-refresh.service";
 import { getValuationDefaults } from "@/features/firm/firm.service";
 import { reserveNextValuationFolio } from "@/features/valuations/services/valuation-folio.service";
 import {
@@ -320,6 +322,8 @@ export async function saveValuation(input: SaveValuationInput) {
       }
       // The firm's colours, unless the template brought its own.
       await applyFirmDocumentPalette(tx, versionId, user.organizationId);
+      // Made now, it is in the current format: «Actualizar formato» is not offered for changes made before it.
+      await stampCurrentLayoutVersion(tx, versionId);
       await saveOwnKindNames(tx, created.IdAvaluo, user.organizationId, tipoInmueble.IdTipoInmueble, {
         title: input.title,
         location: input.location,
@@ -403,7 +407,8 @@ async function validateCreationCatalogs(input: SaveValuationInput, organizationI
  */
 function templateDocumentPayload(sections: AppSection[], defaults: GeneralCaratulaDefaults): SectionPayload[] {
   // A template saved with a client's data (before 2 Nov 2026) never passes them on: the new valuation starts blank.
-  const clean = stripClientDataFromSections(sections, { includeImages: true });
+  // A template saved before a change of format starts the valuation in the current one (and its version).
+  const clean = withCurrentLayout(stripClientDataFromSections(sections, { includeImages: true }));
   // The construction tables become the capture here, not on the first opening (which then asked to save).
   const hydrated = clean.map((section) => (section.id === "caratula" ? hydrateGeneralCaratulaTemplate(section, defaults)
     : getCanonicalSectionKey(section.id) === "CONSTRUCCION" ? withCaptureMarks(section)

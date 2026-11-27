@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 import { cn } from "@/lib/utils";
+import { SheetFieldName } from "./sheet-field-name";
 
 /**
  * The look of a comparable's sheet, like the tables of the dictamen: a light
@@ -84,8 +85,12 @@ export function SheetTable({ items, printable = false }: { items: SheetItem[]; p
   );
 }
 
-/** A field of the editable sheet: its label beside its control, as the card shows a datum beside its name. */
-export type SheetField = { key: string; label: ReactNode; htmlFor?: string; control: ReactNode; wide?: boolean };
+/**
+ * A field of the editable sheet: its label beside its control, as the card
+ * shows a datum beside its name. `rename`: a datum of the card the market
+ * names (its label is a text), by its key in the card, renamed here and in its columns.
+ */
+export type SheetField = { key: string; label: ReactNode; htmlFor?: string; control: ReactNode; wide?: boolean; rename?: { key: string; onRename: (label: string) => void } };
 
 /**
  * The editable sheet (24 nov 2026, «una sola ventana»): the same label and
@@ -93,7 +98,7 @@ export type SheetField = { key: string; label: ReactNode; htmlFor?: string; cont
  * phone, with the field inside the value cell. Every field keeps its own
  * label (`htmlFor`), so it is read and focused as before.
  */
-export function SheetFieldTable({ items }: { items: SheetField[] }) {
+export function SheetFieldTable({ items, autoComplete = "off" }: { items: SheetField[]; autoComplete?: string }) {
   const tone = tones(false);
   const cell = cn("border-t", tone.frame);
   return (
@@ -108,7 +113,9 @@ export function SheetFieldTable({ items }: { items: SheetField[] }) {
       {sheetRows(items).map((row) => row.map((item) => (
         <div key={item.key} className="contents">
           <div className={cn(cell, tone.label, "flex items-start px-2 py-1.5 font-medium")}>
-            {item.htmlFor ? <label htmlFor={item.htmlFor}>{item.label}</label> : <span>{item.label}</span>}
+            {item.rename && typeof item.label === "string" ? (
+              <SheetFieldName label={item.label} htmlFor={item.htmlFor} fieldKey={item.rename.key} onRename={item.rename.onRename} autoComplete={autoComplete} />
+            ) : item.htmlFor ? <label htmlFor={item.htmlFor}>{item.label}</label> : <span>{item.label}</span>}
           </div>
           <div className={cn(cell, "grid min-w-0 content-start gap-1 px-1.5 py-1", (item.wide || row.length === 1) && "sm:col-span-3")} data-sheet-field={item.key}>
             {item.control}

@@ -3,6 +3,7 @@ import { toast } from "sonner";
 
 import {
   describeLayoutChanges,
+  hasPendingLayoutSteps,
   layoutStepsFor,
   layoutVersionOf,
   refreshDocumentLayout,
@@ -76,8 +77,9 @@ export function useLayoutRefresh({
     if (!changes.length) toast.success("Este avalúo ya tiene el formato más reciente", { description: "Las páginas del cálculo se escribieron otra vez con el formato actual." });
   };
 
-  // Something of the current format is still missing: the policy left it for the button, or the appraiser took it back.
-  const pending = useMemo(() => canEdit && refreshDocumentLayout(sections).changes.length > 0, [canEdit, sections]);
+  // Something of a format newer than the valuation's is still missing (the policy left it for the button). A new
+  // valuation is created in the current format and version (valuation creation), so it is never highlighted.
+  const pending = useMemo(() => canEdit && hasPendingLayoutSteps(sections), [canEdit, sections]);
 
   return { pending, refreshNow };
 }

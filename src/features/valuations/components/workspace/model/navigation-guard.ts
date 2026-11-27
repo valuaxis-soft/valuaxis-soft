@@ -32,6 +32,47 @@ export function leavingLinkHref(event: ClickLike, anchor: AnchorLike | null, loc
   return `${url.pathname}${url.search}${url.hash}`;
 }
 
+type FieldLike = {
+  tagName: string;
+  type?: string;
+  isContentEditable?: boolean;
+  closest: (selector: string) => unknown;
+};
+
+/** The fields of the calculation panels (their own and those they write into the tables of the document), out of their dialogs, menus and lists. */
+const CALCULATION_SCOPE = "[data-calculation-panel], [data-capture-slot]";
+const OUT_OF_SCOPE = "[role=dialog], [role=alertdialog], [role=menu], [role=listbox], [data-slot=popover-content], [data-leave-ignore]";
+const NOT_TYPED = new Set(["button", "checkbox", "radio", "range", "color", "file", "submit", "reset", "image", "hidden", "search"]);
+
+/**
+ * A field of a calculation panel that holds what the appraiser typed until it is left:
+ * the fields of the calculation panels send it when they lose the focus
+ * (a CommitCell, the settings of a market). Typed and still focused, it is
+ * work that leaving loses (27 Nov 2026: «Texto del nivel de oferta» and the
+ * back arrow left without asking, and the text was lost). Pure: it reads
+ * only the element's kind and where it is.
+ */
+export function isCalculationTypingField(target: unknown): boolean {
+  if (!target || typeof target !== "object" || !("tagName" in target) || typeof (target as FieldLike).closest !== "function") return false;
+  const field = target as FieldLike;
+  const tag = field.tagName.toUpperCase();
+  const typed = tag === "TEXTAREA" || (tag === "INPUT" && !NOT_TYPED.has((field.type ?? "text").toLowerCase())) || field.isContentEditable === true;
+  return typed && Boolean(field.closest(CALCULATION_SCOPE)) && !field.closest(OUT_OF_SCOPE);
+}
+
+/**
+ * Sends what the focused field of a calculation panel holds, as leaving it does (its
+ * blur sends it), and waits for the next task, so what it sends is already
+ * on its way (pending-mutations.ts). True when there was such a field.
+ */
+export async function sendFocusedCalculationField(doc: Pick<Document, "activeElement"> = document): Promise<boolean> {
+  const active = doc.activeElement;
+  if (!isCalculationTypingField(active)) return false;
+  (active as HTMLElement).blur();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  return true;
+}
+
 /** The open editor's question before leaving; null when no editor is open. */
 let leaveGuard: ((href: string) => boolean) | null = null;
 

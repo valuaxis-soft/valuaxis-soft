@@ -301,6 +301,27 @@ export function refreshDocumentLayout(sections: AppSection[], steps: readonly La
 }
 
 /**
+ * A document made now (a new valuation, from the code's sections or from a
+ * template of the firm saved before a change of format) in the current
+ * format, marked with the current version: it is never offered «Actualizar
+ * al formato más reciente» for a change made before it existed.
+ */
+export function withCurrentLayout(sections: AppSection[]): AppSection[] {
+  return withLayoutVersion(refreshDocumentLayout(sections).sections, LAYOUT_VERSION);
+}
+
+/**
+ * Something of the current format is still missing from this document: a
+ * step after its version (the policy left it for the button) changes it.
+ * A document already at the current version (new, refreshed or the refresh
+ * taken back) is not; «Actualizar formato» still runs every step.
+ */
+export function hasPendingLayoutSteps(sections: AppSection[]): boolean {
+  const version = layoutVersionOf(sections);
+  return refreshDocumentLayout(sections, LAYOUT_STEPS.filter((step) => step.version > version)).changes.length > 0;
+}
+
+/**
  * Takes back what a refresh changed, and only that: what the appraiser or the
  * calculation did since stays. The document keeps the current version, so it
  * is not refreshed again on its own; «Actualizar formato» still can.

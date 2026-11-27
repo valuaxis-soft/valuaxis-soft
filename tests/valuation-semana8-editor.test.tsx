@@ -50,7 +50,7 @@ test("a calculation panel's save still on its way counts as work to save; readin
 
 test("every way out of the editor asks while there is work to save: links, the browser, the tab, the command palette", () => {
   const save = source("src/features/valuations/components/workspace/hooks/use-valuation-save.ts");
-  assert.match(save, /const mustAskBeforeLeaving = hasUnsavedChanges \|\| panelSaving;/);
+  assert.match(save, /const mustAskBeforeLeaving = hasUnsavedChanges \|\| panelSaving \|\| unsentField;/);
   for (const guard of [/if \(!mustAskBeforeLeaving\) return;\n\s+const onBeforeUnload/, /if \(!mustAskBeforeLeaving \|\| historyGuardRef\.current\) return;/, /if \(!mustAskBeforeLeaving \|\| leavingRef\.current\) return;\n\s+const anchor/, /if \(mustAskBeforeLeaving\) \{\n\s+setPendingExit/]) {
     assert.match(save, guard);
   }

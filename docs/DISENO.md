@@ -106,7 +106,7 @@ Las tres familias se sirven desde nuestro dominio con `next/font` (se descargan 
 | Familia | Token | Para qué |
 |---|---|---|
 | **Fraunces** (variable, eje de tamaño óptico) | `font-display` | Títulos de la página pública, del acceso y de tarjetas destacadas. Serifa cálida con carácter editorial: recuerda al dictamen impreso sin verse anticuada. No lleva cifras tabulares: no se usa en tablas |
-| **IBM Plex Sans** (variable) | `font-sans`, `font-heading` | Toda la interfaz. Diseñada para pantallas técnicas, muy legible en tamaños chicos y con **cifras tabulares por omisión** (todos los dígitos miden lo mismo): las columnas de importes quedan alineadas. Aun así, en tablas y totales se pone `tabular-nums` |
+| **IBM Plex Sans** (variable, con su cursiva) | `font-sans`, `font-heading` | Toda la interfaz. Se carga también la cursiva: sin ella el navegador inclina las cifras calculadas (en cursiva) y una celda angosta cortaba su último dígito («1.0(»). Diseñada para pantallas técnicas, muy legible en tamaños chicos y con **cifras tabulares por omisión** (todos los dígitos miden lo mismo): las columnas de importes quedan alineadas. Aun así, en tablas y totales se pone `tabular-nums` |
 | **Geist** | `font-document` | Solo el documento del avalúo. Se conserva para que un cambio en la interfaz nunca mueva la paginación del dictamen (`[data-print-document]`, `article[data-document-page]`) |
 
 Escala: cuerpo 16 px (`text-base`), secundario 14 px, etiquetas 12 px con `tracking-[0.14em]` en mayúsculas. Títulos de sección de la página pública 30 → 44 px; H1 42 → 60 px, `leading-[1.04]`, `text-balance`. Interlineado de párrafo 1.5–1.65. Línea de lectura de 60 a 75 caracteres (`max-w-xl` / `max-w-2xl`).

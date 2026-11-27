@@ -92,6 +92,24 @@ export function withCardFieldLabel(labels: Record<string, string> | null | undef
   return !name || (own !== null && name.toLocaleLowerCase("es-MX") === own.toLocaleLowerCase("es-MX")) ? rest : { ...rest, [key]: name };
 }
 
+/**
+ * A datum of the card renamed, from a header of its column or from the card
+ * (video 8.9, both directions): a characteristic of the list takes the name
+ * there (an empty one keeps the one it had); any other datum, in the
+ * market's `fieldLabels`. What changes in the market's settings.
+ */
+export function renamedCardField(
+  settings: Pick<MarketSettingsDto, "characteristicFields" | "comparableType" | "fieldLabels">,
+  key: string,
+  label: string,
+): Pick<MarketSettingsDto, "characteristicFields" | "fieldLabels"> | Record<string, never> {
+  const list = characteristicFieldsOf(settings);
+  if (list.some((field) => field.key === key)) {
+    return label.trim() ? { characteristicFields: list.map((field) => (field.key === key ? { ...field, label: label.trim() } : field)) } : {};
+  }
+  return { fieldLabels: withCardFieldLabel(settings.fieldLabels, key, label) };
+}
+
 /** A figure of the list of characteristics as the column prints it: areas with m², frente and fondo with m. */
 function characteristicCell(comparable: ComparableDto, field: CharacteristicField): string | null {
   const key = field.key;

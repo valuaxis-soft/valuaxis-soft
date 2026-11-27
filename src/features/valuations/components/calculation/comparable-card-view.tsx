@@ -83,6 +83,8 @@ export function ComparableCardView({ card, printable = false, map, machinery: ma
   machinery?: boolean;
 }) {
   const { comparable, type } = card;
+  // The names the market gives the card's data (its columns renamed, or renamed in the card: video 8.9).
+  const named = (key: string, label: string) => card.fieldLabels?.[key]?.trim() || label;
   const rent = isRentComparableType(type);
   const unitValue = comparable.area && comparable.price ? comparable.price / comparable.area : null;
   const operation = comparable.operationType ?? (rent ? "RENTA" : "VENTA");
@@ -110,7 +112,7 @@ export function ComparableCardView({ card, printable = false, map, machinery: ma
       { label: AREA_LABELS[type], value: <span className="tabular-nums">{number(comparable.area)}</span> },
     ]),
     { label: "Operación", value: OPERATION_TYPE_LABELS[operation] },
-    { label: "Fecha de la oferta", value: dayText(comparable.offerDate) },
+    { label: named("offerDate", "Fecha de la oferta"), value: dayText(comparable.offerDate) },
     // A machine shows its age here: its «Construcción» is not shown, and its «Año» is in «Datos de la máquina».
     // Not captured, the age of its «Año» to today (the card has no valuation's day).
     ...(machinery ? [{ label: "Edad (años)", value: number(comparable.propertyDetails?.age ?? ageFromYear(comparable.machinery?.year, todayInMexico())) }] : []),
@@ -122,7 +124,7 @@ export function ComparableCardView({ card, printable = false, map, machinery: ma
       ...(part === "street" ? [{ label: STREET_TYPE_LABEL, value: streetTypeText(comparable.address) }] : []),
       { label: ADDRESS_LABELS[part], value: orDash(comparable.address?.[part]) },
     ]),
-    { label: "Proximidad urbana", value: comparable.urbanProximity ? URBAN_PROXIMITY_LABELS[comparable.urbanProximity] : "—" },
+    { label: named("urbanProximity", "Proximidad urbana"), value: comparable.urbanProximity ? URBAN_PROXIMITY_LABELS[comparable.urbanProximity] : "—" },
     {
       label: "Latitud, longitud",
       value: comparable.latitude !== null && comparable.latitude !== undefined && comparable.longitude !== null && comparable.longitude !== undefined
@@ -130,42 +132,42 @@ export function ComparableCardView({ card, printable = false, map, machinery: ma
     },
   ];
   const source: SheetItem[] = [
-    { label: "Fuente o portal", value: orDash(comparable.sourceName) },
+    { label: named("sourceName", "Fuente o portal"), value: orDash(comparable.sourceName) },
     // Printed without them (the memoria leaves them out unless the appraiser includes them), the rows go too.
     ...(printable && !comparable.contactName && !comparable.contactPhone ? [] : [
-      { label: "Contacto", value: orDash(comparable.contactName) },
-      { label: "Teléfono", value: orDash(comparable.contactPhone) },
+      { label: named("contactName", "Contacto"), value: orDash(comparable.contactName) },
+      { label: named("contactPhone", "Teléfono"), value: orDash(comparable.contactPhone) },
     ]),
-    { label: "Fecha de consulta", value: dayText(comparable.consultedOn) },
-    { label: "Vigencia de la oferta", value: dayText(comparable.validUntil) },
-    { label: "ID de publicación", value: orDash(comparable.listingDetails?.publicationId) },
-    { label: "Liga del anuncio", value: comparable.url ? <ListingLink href={comparable.url} printable={printable} /> : "—", wide: true },
+    { label: named("consultedOn", "Fecha de consulta"), value: dayText(comparable.consultedOn) },
+    { label: named("validUntil", "Vigencia de la oferta"), value: dayText(comparable.validUntil) },
+    { label: named("publicationId", "ID de publicación"), value: orDash(comparable.listingDetails?.publicationId) },
+    { label: named("url", "Liga del anuncio"), value: comparable.url ? <ListingLink href={comparable.url} printable={printable} /> : "—", wide: true },
   ];
   // The land's area also in "Terreno" (V5.4-12): the area of a land comparable, the land of a built one.
   const landArea = built ? comparable.landArea : comparable.area;
   const land: SheetItem[] = [
-    { label: "Superficie de terreno (m²)", value: <span className="tabular-nums">{number(landArea)}</span> },
-    { label: "Uso de suelo", value: orDash(comparable.landUse) },
+    { label: named("landArea", "Superficie de terreno (m²)"), value: <span className="tabular-nums">{number(landArea)}</span> },
+    { label: named("landUse", "Uso de suelo"), value: orDash(comparable.landUse) },
     ...builtins.filter((field) => !["area", "price", "notes", "conservation", "quality"].includes(field.key)).map((field) => {
       const value = comparable[field.key as keyof typeof comparable];
       // The format's tag of the zoning key reads "USO DE SUELO", like the description above it.
       const label = field.key === "landUseKey" ? "Clave de uso de suelo" : field.label.charAt(0) + field.label.slice(1).toLowerCase();
       return { label, value: value === null || value === undefined || value === "" ? "—" : String(value) };
     }),
-    { label: "Pavimento / acceso", value: orDash(comparable.propertyDetails?.paving) },
-    { label: "Ubicación en manzana", value: orDash(comparable.propertyDetails?.blockPosition) },
+    { label: named("paving", "Pavimento / acceso"), value: orDash(comparable.propertyDetails?.paving) },
+    { label: named("blockPosition", "Ubicación en manzana"), value: orDash(comparable.propertyDetails?.blockPosition) },
   ];
   const machine: SheetItem[] = machinery ? (vehicle ? vehicleCardRows : machineryCardRows)(comparable.machinery).map((row) => ({ label: row.label, value: row.value })) : [];
   const construction: SheetItem[] = built && !machinery ? [
-    { label: "Tipo de construcción", value: orDash(comparable.constructionType) },
+    { label: named("constructionType", "Tipo de construcción"), value: orDash(comparable.constructionType) },
     { label: "Calidad", value: orDash(comparable.quality) },
     { label: "Conservación", value: orDash(comparable.conservation) },
-    { label: "Edad (años)", value: number(comparable.propertyDetails?.age) },
+    { label: named("age", "Edad (años)"), value: number(comparable.propertyDetails?.age) },
     ...(comparable.propertyDetails?.year ? [{ label: "Año", value: String(comparable.propertyDetails.year) }] : []),
-    { label: "Niveles", value: number(comparable.propertyDetails?.levels) },
-    { label: "Recámaras", value: number(comparable.bedrooms) },
-    { label: "Baños", value: number(comparable.bathrooms) },
-    { label: "Estacionamientos", value: number(comparable.propertyDetails?.parking) },
+    { label: named("levels", "Niveles"), value: number(comparable.propertyDetails?.levels) },
+    { label: named("bedrooms", "Recámaras"), value: number(comparable.bedrooms) },
+    { label: named("bathrooms", "Baños"), value: number(comparable.bathrooms) },
+    { label: named("parking", "Estacionamientos"), value: number(comparable.propertyDetails?.parking) },
   ] : [];
   const characteristics: SheetItem[] = [
     ...extra.map(([key, value]) => ({ label: characteristicLabelOf(key, card.characteristicLabels), value })),
