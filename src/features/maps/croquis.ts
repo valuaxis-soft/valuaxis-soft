@@ -396,6 +396,18 @@ const COMPARABLE_LEGEND_LABELS: Record<ComparableType, string> = {
 /** The markets the generator offers, with the legend's names. */
 export const COMPARABLE_MARKETS = COMPARABLE_TYPES.map((type) => ({ type, title: COMPARABLE_LEGEND_LABELS[type] }));
 
+/**
+ * The pins left out of a frame, by market: «Terrenos en venta: C-2; Inmuebles en renta: C-2».
+ * Each market numbers its comparables from C-1, so a bare «C-2, C-2» said nothing (QA, 27 nov 2026).
+ */
+export function pinsByMarketText(pins: readonly Pick<ComparablePin, "type" | "reference">[]): string {
+  return COMPARABLE_MARKETS
+    .map(({ type, title }) => ({ title, references: pins.filter((pin) => pin.type === type).map((pin) => pin.reference) }))
+    .filter((market) => market.references.length)
+    .map((market) => `${market.title}: ${pinNumbers(market.references)}`)
+    .join("; ");
+}
+
 /** "C-1 a C-3, C-5": the numbers of the pins, the runs written as ranges. */
 export function pinNumbers(references: readonly number[]) {
   const sorted = [...new Set(references)].sort((a, b) => a - b);

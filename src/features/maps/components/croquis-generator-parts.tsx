@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import type { ComparableType } from "@/features/valuations/calculation/market-types";
 
-import { COMPARABLE_MARKETS, DEFAULT_SUBJECT_LEGEND, MAX_SUBJECT_LEGEND, croquisKind, type ComparablePin, type CroquisKind, type CroquisSettings } from "../croquis";
+import { COMPARABLE_MARKETS, DEFAULT_SUBJECT_LEGEND, pinsByMarketText, MAX_SUBJECT_LEGEND, croquisKind, type ComparablePin, type CroquisKind, type CroquisSettings } from "../croquis";
 import { SATELLITE_NOTICE, ZOOM_STEP, formatZoom, isScreenOnlyMapType, type CroquisFrame, type MapType } from "../map-styles";
 
 /**
@@ -129,7 +129,7 @@ export function CroquisFramesSection({
               <span className="min-w-0 flex-1">
                 {outside.length === comparables
                   ? `Ningún comparable cabe en este encuadre (zoom ${formatZoom(zoom)}); la imagen saldría sin ellos.`
-                  : `${outside.length} de ${comparables} comparables quedan fuera de este encuadre: ${outside.map((pin) => pin.label).join(", ")}.`}
+                  : `${outside.length} de ${comparables} comparables quedan fuera de este encuadre: ${pinsByMarketText(outside)}.`}
               </span>
               <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={!canEdit} onClick={() => onFitComparables(kind)}>
                 Encuadrar los comparables
