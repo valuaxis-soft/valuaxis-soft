@@ -11,6 +11,7 @@ import { prisma } from "@/infrastructure/database/prisma-client";
 import { ENGINE_VERSION } from "../engine/config";
 import { computeMachineryCost, computeMachineryMarket } from "../engine/machinery";
 import { Trace } from "../engine/trace";
+import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
 import { asRecord, catalogId, findValuation, formulasOrThrow, writableVersion, type Tx } from "./access";
 import { storedFormulas } from "./captured-formulas";
 import { recomputeConclusion } from "./conclusion.service";
@@ -20,10 +21,13 @@ import {
   DEFAULT_MACHINERY_MARKET,
   EMPTY_MACHINERY_ITEM,
   MACHINERY_CONSERVATION_TWICE,
+  MACHINERY_FACTOR_LIMIT_MESSAGE,
   MACHINERY_PROPERTY_TYPE,
   alignedCharacteristics,
   emptyAttachment,
   emptyOffer,
+  machineryFactorColumns,
+  machineryFactorCountAllowed,
   toMachineryCostEngineInput,
   toMachineryMarketEngineInput,
   type MachineryCalculationDto,
@@ -86,6 +90,11 @@ export async function saveMachineryCalculation(publicId: string, user: AuthUser,
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
     const current = await tx.enfoqueMaquinaria.findUnique({ where: { IdVersionAvaluo: versionId }, select: { JCostos: true, JMercado: true } });
+    // Six factors with the FEd; one saved with more keeps them but takes no more (video 8.13, 18:01).
+    if (payload.market?.factorColumns) {
+      const previous = machineryFactorColumns(marketOf(current?.JMercado ?? null)).length;
+      if (!machineryFactorCountAllowed(payload.market.factorColumns.length, previous)) throw new ValuationWorkflowError(MACHINERY_FACTOR_LIMIT_MESSAGE, 400);
+    }
     // Each capture keeps its formulas by path within it ("item.quotedPrice", "offers.0.price").
     const formulasOf = <T extends { formulas?: Record<string, string> }>(next: T, previous: T) =>
       formulasOrThrow({ next, sent: next.formulas, previous, previousFormulas: previous.formulas ?? {} });

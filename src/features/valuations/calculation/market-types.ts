@@ -99,8 +99,22 @@ export type FactorSlotConfig = {
   key?: string | null;
 };
 
-/** At most eight factors per homologation; the appraiser's Excel uses seven and the FRe, which is not one of them (FAL-12, 23 Nov 2026). */
-export const MAX_FACTOR_SLOTS = 8;
+/**
+ * At most six factors per homologation, the FRe not among them (video 8.13,
+ * 18:01: «máximo son seis… lo de hasta ocho lo sacaron de la IA»). The eight
+ * of FAL-12 came from an audit, not from the appraiser.
+ */
+export const MAX_FACTOR_SLOTS = 6;
+/** What a homologation saved while eight were allowed may still hold: it keeps its factors and adds no more. */
+export const LEGACY_MAX_FACTOR_SLOTS = 8;
+export const FACTOR_LIMIT_MESSAGE = `La homologación lleva hasta ${MAX_FACTOR_SLOTS} factores, sin contar el FRe. Quita uno para agregar otro.`;
+
+/**
+ * Whether a homologation may have `next` factors after having `previous`:
+ * up to six, or no more than it already had (one saved with seven or eight
+ * keeps them, and may take one out, but not add one).
+ */
+export const factorCountAllowed = (next: number, previous: number) => next <= MAX_FACTOR_SLOTS || next <= previous;
 
 /** What identifies a factor in a homologation: the firm's own key, or its type. */
 export const factorKey = (item: { type: FactorType; key?: string | null }) => item.key ?? item.type;

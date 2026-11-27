@@ -52,6 +52,11 @@ export type CaptureAddress =
    * of the appraiser's Excel, no «configuration» apart).
    */
   | { table: string; part: "before" }
+  /**
+   * Under the table and its notes, before its boxes: what the capture writes
+   * that prints right there (the justification of the factors, video 8.13, 02:02).
+   */
+  | { table: string; part: "notes" }
   /** After everything of the table (its notes and boxes): what the capture adds at its end (the values and the statistics of a market). */
   | { table: string; part: "after" };
 

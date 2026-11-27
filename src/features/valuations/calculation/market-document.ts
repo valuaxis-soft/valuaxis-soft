@@ -473,7 +473,7 @@ export function marketDocumentBlocks(
         summaryBoxes: homologationBoxes(calculation, result),
         notes: [
           ...(settings.comparableType === "TERRENO_RENTA" ? [{ position: "top" as const, text: SAME_FACTORS_AS_LAND_SALE }] : []),
-          // Right under the table, before the values (video 5.3, 13:50): under the value goes only the justification.
+          // Right under the table, before the values (video 5.3, 13:50), and the justification after it (video 8.13, 02:02).
           ...(homologationNote ? [{ position: "table" as const, text: homologationNote }] : []),
           ...justificationNotes(calculation),
         ],
@@ -582,22 +582,24 @@ function withoutJustificationTitle(text: string) {
 }
 
 /**
- * "Justificación de los factores utilizados", after the tables: its title,
- * always on a line of its own when there is any text (video 5.3, 12:42), then
- * the general text and each comparable's with its number in bold. The
- * appraiser may leave it out of the dictamen.
+ * "Justificación de los factores utilizados", right under the homologation
+ * table, before its values and the market's value (video 8.13, 02:02: «va
+ * debajo de esta tabla, antes de la conclusión»): its title, always on a line
+ * of its own when there is any text (video 5.3, 12:42), then the general text
+ * and each comparable's with its number, in the tones of the document's
+ * palette (video 8.14, 36:29). The appraiser may leave it out of the dictamen.
  */
 function justificationNotes({ settings, comparables }: MarketCalculationDto): TableNote[] {
   if (settings.showFactorJustification === false) return [];
   const general = withoutJustificationTitle(settings.justification?.trim() ?? "");
   const notes: TableNote[] = [
-    ...(general ? [{ position: "bottom" as const, text: general }] : []),
+    ...(general ? [{ position: "table" as const, justification: true, text: general }] : []),
     ...comparables.flatMap((comparable) => {
       const text = comparable.factorJustification?.trim();
-      return text ? [{ position: "bottom" as const, label: `Comparable ${comparable.reference}:`, text }] : [];
+      return text ? [{ position: "table" as const, justification: true, label: `Comparable ${comparable.reference}:`, text }] : [];
     }),
   ];
-  return notes.length ? [{ position: "bottom", heading: true, text: FACTOR_JUSTIFICATION_TITLE }, ...notes] : [];
+  return notes.length ? [{ position: "table", justification: true, heading: true, text: FACTOR_JUSTIFICATION_TITLE }, ...notes] : [];
 }
 
 /** Above the homologation, what it is made against; below, the steps from the homologated values to the value. */

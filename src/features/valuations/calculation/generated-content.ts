@@ -215,7 +215,9 @@ export function printedTable(table: TableContent) {
     normalized.title,
     normalized.schema?.hideCaption ?? false,
     normalized.schema?.plain ?? false,
-    (normalized.schema?.notes ?? []).map((note) => [note.position, note.label ?? null, note.text]),
+    (normalized.schema?.notes ?? []).map((note) => [
+      note.position, note.label ?? null, note.text, note.heading ?? false, note.small ?? false, note.justification ?? false, note.fromApproach ?? false,
+    ]),
     getTableHeaderLayout(normalized).topRow.map((cell) => (cell.kind === "group-title" ? [cell.group.title, cell.colSpan] : null)),
     normalized.columns.map((column) => [
       column.name, presentation[column.id]?.align ?? null, presentation[column.id]?.noWrap ?? false, presentation[column.id]?.bold ?? false,

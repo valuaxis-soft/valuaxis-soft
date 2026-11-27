@@ -1,11 +1,13 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { CircleHelp, Loader2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { api } from "@/lib/api-client";
 import {
   DISPLAY_DECIMALS,
@@ -46,25 +48,55 @@ export function openValuationPlace(place: ValuationPlace) {
 }
 
 /**
- * What a calculation panel says of the precision: the choice in force and
- * where it is changed, Carátula › Configuración del avalúo. The control itself
- * lives only there (video 7.4, 00:00: «lo que es configuración va arriba»).
+ * What the precision in force means, in words the appraiser reads at once:
+ * the decimals the factors show and how they multiply.
+ */
+export function precisionExplanation(precision: CalculationPrecision | undefined) {
+  const { decimals, calculateWithShown } = precision ?? LEGACY_PRECISION;
+  return calculateWithShown
+    ? `Los factores se ven con ${decimals} decimales y se multiplican tal como se ven: lo impreso cuadra con la cuenta (14,361.99 × 0.97 = 13,931.13).`
+    : `Los factores se ven con ${decimals} decimales, pero se multiplican con todos sus decimales, como Excel por omisión: un factor que se ve 0.97 puede ser 0.9683 (14,361.99 × 0.9683 = 13,906.44).`;
+}
+
+/**
+ * The precision, as a discreet «?» beside the homologation: what it means and
+ * where it is chosen, Carátula › Configuración del avalúo. Not a sentence over
+ * the table (video 8.13, 18:34: «no quiero esto aquí… necesito que sean
+ * claros»); the control itself lives only in the carátula (video 7.4, 00:00).
  */
 export function CalculationPrecisionSummary({ precision }: { precision: CalculationPrecision | undefined }) {
   const current = precision ?? LEGACY_PRECISION;
   return (
-    <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground" data-calculation-precision-summary="">
-      <span>
-        Factores con {current.decimals} decimales{current.calculateWithShown ? ", calculando con la precisión mostrada" : ", calculando con todos los decimales"}.
-      </span>
-      <button
-        type="button"
-        className="font-medium text-primary underline-offset-2 hover:underline"
-        onClick={() => window.dispatchEvent(new CustomEvent(OPEN_SECTION_EVENT, { detail: "CARATULA" }))}
+    <Popover>
+      <PopoverTrigger
+        render={(
+          <button
+            type="button"
+            className="inline-flex items-center gap-1 rounded-full text-xs text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring motion-reduce:transition-none"
+            aria-label="¿Con cuántos decimales se calculan los factores?"
+            title="¿Con cuántos decimales se calculan los factores?"
+            data-calculation-precision-summary=""
+          />
+        )}
       >
-        Se cambia en Carátula › Configuración del avalúo
-      </button>
-    </p>
+        <CircleHelp className="size-3.5" aria-hidden />
+        <span>Decimales</span>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="grid w-80 gap-2 p-3 text-xs" data-calculation-precision-help="">
+        <p className="text-sm font-medium">Decimales de los factores: {current.decimals}</p>
+        <p className="text-muted-foreground">{precisionExplanation(current)}</p>
+        <p className="text-muted-foreground">Es una sola elección para todo el avalúo: la homologación, los costos y la memoria la usan igual.</p>
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          className="w-fit"
+          onClick={() => openValuationPlace({ sectionKey: "CARATULA", selector: "[data-calculation-precision]" })}
+        >
+          Cambiarla en Carátula › Configuración del avalúo
+        </Button>
+      </PopoverContent>
+    </Popover>
   );
 }
 

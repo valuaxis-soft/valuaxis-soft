@@ -201,9 +201,10 @@ test("V7.4-01: the precision is chosen only in Carátula › Configuración del 
   }
   const settings = readFileSync("src/features/valuations/components/editor/valuation-settings-panel.tsx", "utf8");
   assert.match(settings, /<CalculationPrecisionControl/);
+  // Video 8.13, 18:34: no sentence over the homologation, only a discreet «?» that explains it and leads to the carátula.
   const html = renderToStaticMarkup(<CalculationPrecisionSummary precision={{ decimals: 2, calculateWithShown: true }} />);
-  assert.match(html, /Factores con 2 decimales, calculando con la precisión mostrada/);
-  assert.match(html, /Se cambia en Carátula › Configuración del avalúo/);
+  assert.match(html, /aria-label="¿Con cuántos decimales se calculan los factores\?"/);
+  assert.doesNotMatch(html, /Factores con 2 decimales|Se cambia en Carátula/, "no note over the table");
   assert.doesNotMatch(html, /<select/, "no control repeated in the content");
 });
 

@@ -19,6 +19,7 @@ import {
   comparableFormValues,
   defaultCharacteristicFields,
   defaultMarketSettings,
+  factorCountAllowed,
   homologationBasisOf,
   offerMarkOf,
   toMarketEngineInput,
@@ -254,14 +255,19 @@ test("a factor the firm creates is kept once, however it is written, and offered
   assert.deepEqual(resolveCustomFactors(null), []);
 });
 
-test("at most eight factors per homologation (FAL-12), each once; the firm's factors go by their key", () => {
+test("at most six factors per homologation, the FRe not among them (video 8.13, 18:01); one saved with eight keeps them; each once; the firm's factors go by their key", () => {
   const slots = (count: number) => [{ type: "SUPERFICIE", label: "Sup." }, ...["NEGOCIACION", "UBICACION", "ZONA", "FRENTE", "USO_SUELO", "FORMA", "TOPOGRAFIA", "SERVICIOS"]
     .slice(0, count - 1).map((type) => ({ type, label: type }))];
   const base = { ...land.settings };
   assert.ok(marketSettingsSchema.safeParse({ ...base, factorSlots: slots(8) }).success);
   const nine = marketSettingsSchema.safeParse({ ...base, factorSlots: slots(9) });
   assert.equal(nine.success, false);
-  assert.match(nine.error?.issues[0].message ?? "", /hasta 8 factores \(sin contar el FRe\)/);
+  assert.match(nine.error?.issues[0].message ?? "", /hasta 6 factores, sin contar el FRe/);
+  assert.equal(factorCountAllowed(6, 6), true);
+  assert.equal(factorCountAllowed(7, 6), false, "a seventh is not added");
+  assert.equal(factorCountAllowed(8, 8), true, "one saved with eight keeps them");
+  assert.equal(factorCountAllowed(7, 8), true, "and may take one out");
+  assert.equal(factorCountAllowed(8, 7), false, "but not add one back beyond six");
   const own = [{ type: "SUPERFICIE", label: "Sup." }, { type: "OTRO", key: "custom:vista", label: "Vista" }, { type: "OTRO", key: "custom:acceso", label: "Acceso" }];
   assert.ok(marketSettingsSchema.safeParse({ ...base, factorSlots: own }).success, "two own factors, both of type OTRO");
   assert.equal(marketSettingsSchema.safeParse({ ...base, factorSlots: [...own, own[1]] }).success, false);
@@ -287,7 +293,7 @@ test("reordering the factors moves their columns; each comparable's values follo
 /*  6. Justification of the factors, and the legend                    */
 /* ------------------------------------------------------------------ */
 
-test("the justification of the factors prints after the tables, one per comparable, unless turned off", () => {
+test("the justification of the factors prints right under the homologation table, before its values (V8.13), one per comparable, unless turned off", () => {
   const target: MarketCalculationDto = {
     ...land,
     settings: { ...land.settings, justification: "Criterio del perito." },
@@ -295,13 +301,13 @@ test("the justification of the factors prints after the tables, one per comparab
   };
   const notes = (calculation: MarketCalculationDto) => printed(marketDocumentBlocks(calculation, compute(calculation))[0].apartados[1].tables[0]).schema?.notes;
   assert.deepEqual(notes(target), [
-    // The legend right under the table (video 5.3, 13:50); the justification's title always on a line of its own (12:42).
+    // The legend right under the table (video 5.3, 13:50), then the justification, before the values (video 8.13, 02:02); its title on a line of its own (12:42).
     { position: "table", text: "Cuando el factor de homologación es menor a la unidad denota que la oferta es mejor que el bien valuado." },
-    { position: "bottom", heading: true, text: "Justificación de los factores utilizados" },
-    { position: "bottom", text: "Criterio del perito." },
-    { position: "bottom", label: "Comparable 1:", text: "Texto 1" },
-    { position: "bottom", label: "Comparable 3:", text: "Texto 3" },
-    { position: "bottom", label: "Comparable 4:", text: "Texto 4" },
+    { position: "table", justification: true, heading: true, text: "Justificación de los factores utilizados" },
+    { position: "table", justification: true, text: "Criterio del perito." },
+    { position: "table", justification: true, label: "Comparable 1:", text: "Texto 1" },
+    { position: "table", justification: true, label: "Comparable 3:", text: "Texto 3" },
+    { position: "table", justification: true, label: "Comparable 4:", text: "Texto 4" },
   ]);
   assert.deepEqual(notes({ ...target, settings: { ...target.settings, showFactorJustification: false } }), [
     { position: "table", text: DEFAULT_HOMOLOGATION_NOTE },
@@ -309,13 +315,13 @@ test("the justification of the factors prints after the tables, one per comparab
   // Only the comparables' texts: the title still opens them; a general text that starts with the title does not repeat it.
   const onlyComparables = notes({ ...target, settings: { ...target.settings, justification: null } });
   assert.deepEqual(onlyComparables?.slice(1, 3), [
-    { position: "bottom", heading: true, text: "Justificación de los factores utilizados" },
-    { position: "bottom", label: "Comparable 1:", text: "Texto 1" },
+    { position: "table", justification: true, heading: true, text: "Justificación de los factores utilizados" },
+    { position: "table", justification: true, label: "Comparable 1:", text: "Texto 1" },
   ]);
   const typedTitle = notes({ ...target, settings: { ...target.settings, justification: "JUSTIFICACIÓN DE LOS FACTORES UTILIZADOS: Criterio del perito." } });
   assert.deepEqual(typedTitle?.slice(1, 3), [
-    { position: "bottom", heading: true, text: "Justificación de los factores utilizados" },
-    { position: "bottom", text: "Criterio del perito." },
+    { position: "table", justification: true, heading: true, text: "Justificación de los factores utilizados" },
+    { position: "table", justification: true, text: "Criterio del perito." },
   ]);
   assert.match(DEFAULT_HOMOLOGATION_NOTE, /mejor que el bien valuado\.$/, "«bien» for any kind of good");
 });

@@ -157,8 +157,8 @@ test("a lote tipo, an additional amount and the justification show only when cap
   assert.equal(rows[2][1], "$ 25,000.00");
   assert.deepEqual(printed(table).schema?.notes, [
     { position: "table", text: DEFAULT_HOMOLOGATION_NOTE },
-    { position: "bottom", heading: true, text: "Justificación de los factores utilizados" },
-    { position: "bottom", text: "Dentro del rango." },
+    { position: "table", justification: true, heading: true, text: "Justificación de los factores utilizados" },
+    { position: "table", justification: true, text: "Dentro del rango." },
   ]);
 });
 

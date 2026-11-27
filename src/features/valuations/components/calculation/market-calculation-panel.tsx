@@ -30,6 +30,7 @@ import {
   FACTOR_TYPES,
   FACTOR_TYPE_LABELS,
   MARKET_LABELS,
+  FACTOR_LIMIT_MESSAGE,
   MAX_FACTOR_SLOTS,
   MIN_COMPARABLES,
   SALE_COMPARABLE_TYPES,
@@ -106,6 +107,7 @@ import { ComparableDialog, type PendingImages } from "./comparable-dialog";
 import { ComparableReviewDialog } from "./comparable-review-dialog";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
 import { CalculationPrecisionSummary } from "./calculation-precision-control";
+import { FactorJustificationCapture } from "./factor-justification-capture";
 import { factorDecimals } from "@/features/valuations/calculation/calculation-precision";
 import { ImportComparablesDialog } from "./import-comparables-dialog";
 import { ComparableCharacteristicCell, MarketCharacteristicsTable, characteristicNumberText, newFieldKey, type FieldsUpdate, type SubjectUpdate } from "./market-characteristics-table";
@@ -864,8 +866,9 @@ function MarketTypePanel(props: {
     if (insertedFactors.current.has(columnId)) return;
     insertedFactors.current.add(columnId);
     const slots = slotsNow();
+    // Six factors, the FRe not among them (video 8.13, 18:01); the column typed is not kept.
     if (slots.length >= MAX_FACTOR_SLOTS) {
-      toast.info(`La homologación lleva hasta ${MAX_FACTOR_SLOTS} factores (sin contar el FRe).`);
+      toast.warning(FACTOR_LIMIT_MESSAGE, { description: "La columna no se agregó: el FRe multiplica solo los factores de la homologación." });
       return;
     }
     const position = after && factorAt(after) >= 0 ? factorAt(after) + 1 : 0;
@@ -1353,7 +1356,7 @@ function MarketTypePanel(props: {
         surfaceFormulas={surfaceFactorFormulas({ settings: liveSettings, comparables }, calculation.precision)}
       />
 
-      {/* Under the homologation: the values and statistics, then the additional amount and the justification, at the end (video 8.10, 04:18). */}
+      {/* Under the homologation and its boxes: the values and statistics, then the additional amount (video 8.10, 04:18). */}
       <CaptureSlot at={{ table: homologationTable, part: "after" }} fallback>
         <div className="grid gap-3" data-market-values="">
           <div className="grid gap-2 rounded-md border bg-background p-2" data-market-statistics="">
@@ -1441,35 +1444,31 @@ function MarketTypePanel(props: {
               </label>
             </div>
           </fieldset>
-
-          <details className="grid gap-2 rounded-md border bg-background p-2" open={Boolean(liveSettings.justification) || comparables.some((comparable) => comparable.factorJustification)}>
-            <summary className="flex cursor-pointer flex-wrap items-center gap-3 text-sm font-semibold">
-              Justificación de los factores utilizados
-              <label className="flex items-center gap-1.5 text-xs font-normal" onClick={(event) => event.stopPropagation()}>
-                <Checkbox
-                  checked={liveSettings.showFactorJustification !== false}
-                  disabled={readOnly}
-                  onCheckedChange={(checked) => patchSettings({ showFactorJustification: checked === true })}
-                />
-                Se imprime después de la homologación
-              </label>
-            </summary>
-            <fieldset disabled={readOnly} className="mt-2 grid gap-3" onBlur={() => saveSettings()}>
-              <Field>
-                <FieldLabel htmlFor="market-justification">Texto general (opcional)</FieldLabel>
-                <Textarea id="market-justification" rows={2} value={draft.justification} onChange={setDraftField("justification")} />
-              </Field>
-            </fieldset>
-            {comparables.map((comparable) => (
-              <ComparableJustification
-                key={`${comparable.id}:${comparable.factorJustification ?? ""}`}
-                comparable={comparable}
-                readOnly={readOnly}
-                onCommit={(factorJustification) => changeComparable(comparable, (current) => ({ ...current, factorJustification }))}
-              />
-            ))}
-          </details>
         </div>
+      </CaptureSlot>
+
+      {/* Right under the homologation table and its notes, before its values: where the dictamen prints it (video 8.13, 02:02). */}
+      <CaptureSlot at={{ table: captureAt.adopted.table, part: "notes" }} fallback>
+        <FactorJustificationCapture
+          readOnly={readOnly}
+          shown={liveSettings.showFactorJustification !== false}
+          onShownChange={(shown) => patchSettings({ showFactorJustification: shown })}
+        >
+          <fieldset disabled={readOnly} className="grid gap-3" onBlur={() => saveSettings()}>
+            <Field>
+              <FieldLabel htmlFor="market-justification">Texto general (opcional)</FieldLabel>
+              <Textarea id="market-justification" rows={2} className="bg-background" value={draft.justification} onChange={setDraftField("justification")} />
+            </Field>
+          </fieldset>
+          {comparables.map((comparable) => (
+            <ComparableJustification
+              key={`${comparable.id}:${comparable.factorJustification ?? ""}`}
+              comparable={comparable}
+              readOnly={readOnly}
+              onCommit={(factorJustification) => changeComparable(comparable, (current) => ({ ...current, factorJustification }))}
+            />
+          ))}
+        </FactorJustificationCapture>
       </CaptureSlot>
 
       {/* Each comparable in its rows of the tables of the dictamen: where it is, its surface and its offer are typed there. */}
@@ -1618,10 +1617,11 @@ function ComparableJustification(props: { comparable: ComparableDto; readOnly: b
   const id = `market-justification-${comparable.id}`;
   return (
     <Field>
-      <FieldLabel htmlFor={id} className="font-bold">Comparable {comparable.reference}</FieldLabel>
+      <FieldLabel htmlFor={id} className="font-semibold text-primary">Comparable {comparable.reference}</FieldLabel>
       <Textarea
         id={id}
         rows={2}
+        className="bg-background"
         disabled={props.readOnly}
         value={value}
         onChange={(event) => setValue(event.target.value)}

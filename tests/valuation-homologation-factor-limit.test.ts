@@ -1,14 +1,17 @@
 /**
- * FAL-12 of the audit of week 8: the homologation took up to six factors and
- * the appraiser's Excel uses seven and the FRe. It takes eight now, and the
- * table with all of them still prints within an upright page.
+ * The factors of a homologation: six, the FRe not among them (video 8.13,
+ * 18:01: «máximo son seis… lo de hasta ocho lo sacaron de la IA»). One saved
+ * while eight were allowed (FAL-12) keeps them and still prints within an
+ * upright page.
  */
 import assert from "node:assert/strict";
 import test from "node:test";
 import { marketSettingsSchema } from "../src/features/valuations/calculation/market-schemas";
 import { marketDocumentBlocks } from "../src/features/valuations/calculation/market-document";
 import {
+  FACTOR_LIMIT_MESSAGE,
   FACTOR_TYPE_LABELS,
+  LEGACY_MAX_FACTOR_SLOTS,
   MAX_FACTOR_SLOTS,
   defaultMarketSettings,
   toMarketEngineInput,
@@ -33,15 +36,17 @@ function comparable(reference: number, area: number, price: number): ComparableD
   };
 }
 
-test("eight factors are accepted, a ninth is not", () => {
+test("six factors for a new homologation; eight saved before are still read, a ninth never", () => {
   const settings = { ...defaultMarketSettings("TERRENO_VENTA"), subjectArea: 205, adoptedUnitValue: 28_900 };
-  assert.equal(MAX_FACTOR_SLOTS, 8);
+  assert.equal(MAX_FACTOR_SLOTS, 6);
+  assert.equal(LEGACY_MAX_FACTOR_SLOTS, 8);
+  assert.equal(FACTOR_LIMIT_MESSAGE, "La homologación lleva hasta 6 factores, sin contar el FRe. Quita uno para agregar otro.");
   assert.equal(marketSettingsSchema.safeParse({ ...settings, factorSlots: slots }).success, true);
   const ninth = marketSettingsSchema.safeParse({ ...settings, factorSlots: [...slots, { type: "OTRO", label: "Otro" }] });
   assert.equal(ninth.success, false);
 });
 
-test("the homologation with eight factors and the FRe prints within an upright page", () => {
+test("a homologation saved with eight factors and the FRe still prints within an upright page", () => {
   const calculation: MarketCalculationDto = {
     settings: { ...defaultMarketSettings("TERRENO_VENTA"), subjectArea: 205, adoptedUnitValue: 28_900, factorSlots: slots },
     comparables: [comparable(1, 260.77, 7_300_000), comparable(2, 198.4, 5_950_000), comparable(3, 315.2, 8_400_000), comparable(4, 222, 6_480_000), comparable(5, 240.5, 6_900_000)],
