@@ -113,10 +113,11 @@ test("the cost page is one block with land, constructions and installations, eac
     "bottom:vrn": [["Valor de Reposición Nuevo (V.R.N.):", "$ 548,314.43"]],
     "bottom:sumas": [["Suma Privativa (P):", "$ 516,865.31"], ["Suma Común (C):", "$ 0.00"], ["Valor Neto de Reposición (V.N.R.):", "$ 516,865.31"]],
     "bottom:valor": [["C) Valor de Instalaciones Especiales, Elementos Accesorios y Obras Complementarias:", "$ 517,000.00"]],
-    // The physical value closes the page under the last table; C), right above it in its own box, is not written twice (video 8.7, 11:40).
+    // The physical value closes the page under the last table with every part it adds, C) too though its own box is beside it (QA of video 8.14, 43:08).
     "bottom:valor-fisico": [
       ["A) Valor del Terreno:", "$ 1,528,000.00"],
       ["B) Valor de las Construcciones:", "$ 6,530,000.00"],
+      ["C) Valor de Instalaciones Especiales:", "$ 517,000.00"],
       ["VALOR FÍSICO DE REPOSICIÓN (A+B+C):", "$ 8,580,000.00"],
     ],
   });
@@ -150,6 +151,7 @@ test("the land block prints the book's A) TERRENO: lote tipo, market value, the 
     "bottom:valor": [["A) Valor del Terreno:", "$ 690,000.00"]],
     // A, B and C are always listed, with zero for what is missing (video 8.14, 43:08).
     "bottom:valor-fisico": [
+      ["A) Valor del Terreno:", "$ 690,000.00"],
       ["B) Valor de las Construcciones:", "$ 0.00"],
       ["C) Valor de Instalaciones Especiales:", "$ 0.00"],
       ["VALOR FÍSICO DE REPOSICIÓN (A+B+C):", "$ 690,000.00"],
@@ -182,6 +184,11 @@ test("indirects print only when there are any, and the physical value adds only 
   assert.deepEqual(indirects.rows, [["Proyecto y licencias", "5.00%", "$ 7,047,000.00", "$ 352,350.00"]]);
   assert.deepEqual(indirects.boxes["bottom:valor"], [["D) Costos Indirectos:", "$ 352,350.00"]]);
   assert.equal(indirects.boxes["bottom:valor-fisico"].at(-1)?.[0], "VALOR FÍSICO DE REPOSICIÓN (A+B+C+D):");
+  // D) is a row of the sum too, though its own box closes the same table (QA of video 8.14, 43:08: it never showed).
+  assert.deepEqual(indirects.boxes["bottom:valor-fisico"].map(([label]) => label), [
+    "A) Valor del Terreno:", "B) Valor de las Construcciones:", "C) Valor de Instalaciones Especiales:", "D) Costos Indirectos:", "VALOR FÍSICO DE REPOSICIÓN (A+B+C+D):",
+  ]);
+  assert.deepEqual(indirects.boxes["bottom:valor-fisico"].find(([label]) => label.startsWith("D)")), ["D) Costos Indirectos:", "$ 352,350.00"]);
   assert.equal(printed(apartados[2].tables[1]).boxes["bottom:valor-fisico"], undefined, "the closing box moves to the last table");
 
   const landOnly: CostCalculationDto = { ...arandas, constructions: [], installations: [] };
@@ -189,6 +196,7 @@ test("indirects print only when there are any, and the physical value adds only 
   const [block] = costDocumentBlocks(landOnly, land.result, land.trace);
   assert.deepEqual(block.apartados.map((apartado) => apartado.title), ["A) TERRENO EN ESTUDIO"]);
   assert.deepEqual(printed(block.apartados[0].tables[0]).boxes["bottom:valor-fisico"], [
+    ["A) Valor del Terreno:", "$ 1,528,000.00"],
     ["B) Valor de las Construcciones:", "$ 0.00"],
     ["C) Valor de Instalaciones Especiales:", "$ 0.00"],
     ["VALOR FÍSICO DE REPOSICIÓN (A+B+C):", "$ 1,530,000.00"],

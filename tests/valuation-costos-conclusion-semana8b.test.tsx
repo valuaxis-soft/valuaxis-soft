@@ -100,8 +100,9 @@ test("video 8.14, 42:27: the summary always lists A, B and C, so a missing B sho
   assert.deepEqual(boxRows(page), [
     ["A) Valor del Terreno:", "$ 750,000.00"],
     ["B) Valor de las Construcciones:", "$ 2,950,000.00"],
+    ["C) Valor de Instalaciones Especiales:", "$ 38,000.00"],
     ["VALOR FÍSICO DE REPOSICIÓN (A+B+C):", "$ 3,740,000.00"],
-  ], "C closes its own table right above");
+  ], "C is listed too, though its own box closes the same table: the rows are what the label adds (QA of video 8.14, 43:08)");
 
   // Without any construction (his valuation had none), B still reads, at zero, and the sum says A+B+C.
   const noB: CostCalculationDto = { ...tch, types: [], constructions: [] };
@@ -110,6 +111,7 @@ test("video 8.14, 42:27: the summary always lists A, B and C, so a missing B sho
   assert.deepEqual(boxRows(costDocumentBlocks(noB, without.result, without.trace)), [
     ["A) Valor del Terreno:", "$ 750,000.00"],
     ["B) Valor de las Construcciones:", "$ 0.00"],
+    ["C) Valor de Instalaciones Especiales:", "$ 38,000.00"],
     ["VALOR FÍSICO DE REPOSICIÓN (A+B+C):", "$ 790,000.00"],
   ]);
   // Being captured, the page has B) with its tables, empty: the place to add a construction.
