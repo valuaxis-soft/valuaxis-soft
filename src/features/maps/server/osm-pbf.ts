@@ -51,16 +51,16 @@ export interface OsmStreetsSummary {
 }
 
 /** Coordinates are kept as integers of 1e-7 degrees, the precision of OpenStreetMap. */
-const DEGREE = 1e7;
+export const DEGREE = 1e7;
 const MAX_BLOB_HEADER = 64 * 1024;
 const MAX_BLOB = 64 * 1024 * 1024;
-const WIRE_VARINT = 0;
+export const WIRE_VARINT = 0;
 const WIRE_FIXED64 = 1;
-const WIRE_BYTES = 2;
+export const WIRE_BYTES = 2;
 const WIRE_FIXED32 = 5;
 
 /** A cursor over protocol buffers bytes. Numbers stay exact up to 2^53, far above any OpenStreetMap id. */
-class ProtoReader {
+export class ProtoReader {
   pos: number;
   readonly end: number;
 
@@ -128,7 +128,7 @@ class ProtoReader {
   }
 }
 
-interface BlockEntry {
+export interface BlockEntry {
   /** Where the blob (after its header) starts in the file, and its size. */
   offset: number;
   size: number;
@@ -136,7 +136,7 @@ interface BlockEntry {
   hasWays: boolean;
 }
 
-interface PrimitiveBlock {
+export interface PrimitiveBlock {
   strings: Buffer[];
   groups: ProtoReader[];
   granularity: number;
@@ -152,7 +152,7 @@ async function readExactly(file: FileHandle, offset: number, length: number) {
 }
 
 /** The blobs of the file, in order: their type ("OSMHeader", "OSMData") and where their bytes are. */
-async function* blobs(file: FileHandle) {
+export async function* blobs(file: FileHandle) {
   const { size } = await file.stat();
   let offset = 0;
   while (offset < size) {
@@ -175,7 +175,7 @@ async function* blobs(file: FileHandle) {
 }
 
 /** The bytes of a blob, inflated. Geofabrik writes zlib; the other compressions of the format are not read. */
-async function blobData(file: FileHandle, entry: Pick<BlockEntry, "offset" | "size">) {
+export async function blobData(file: FileHandle, entry: Pick<BlockEntry, "offset" | "size">) {
   const blob = new ProtoReader(await readExactly(file, entry.offset, entry.size));
   while (blob.more) {
     const [field, wire] = blob.tag();
@@ -187,7 +187,7 @@ async function blobData(file: FileHandle, entry: Pick<BlockEntry, "offset" | "si
   throw new Error("An .osm.pbf block has no data.");
 }
 
-function primitiveBlock(data: Buffer): PrimitiveBlock {
+export function primitiveBlock(data: Buffer): PrimitiveBlock {
   const block: PrimitiveBlock = { strings: [], groups: [], granularity: 100, latOffset: 0, lonOffset: 0 };
   const reader = new ProtoReader(data);
   while (reader.more) {
@@ -209,7 +209,7 @@ function primitiveBlock(data: Buffer): PrimitiveBlock {
 }
 
 /** The fields of a group (1 nodes, 2 dense nodes, 3 ways…), each as a reader. */
-function* groupFields(group: ProtoReader) {
+export function* groupFields(group: ProtoReader) {
   const reader = new ProtoReader(group.buf, group.pos, group.end);
   while (reader.more) {
     const [field, wire] = reader.tag();
@@ -262,7 +262,7 @@ function* streetWays(block: PrimitiveBlock): Generator<RawWay> {
 }
 
 /** Node ids kept in pieces as they come; one sorted array without repeats once every way was read. */
-class NodeIds {
+export class NodeIds {
   private static readonly PIECE = 1 << 20;
   private pieces: Float64Array[] = [];
   private current = new Float64Array(NodeIds.PIECE);
@@ -293,7 +293,7 @@ class NodeIds {
   }
 }
 
-function indexOfId(ids: Float64Array, id: number) {
+export function indexOfId(ids: Float64Array, id: number) {
   let low = 0;
   let high = ids.length - 1;
   while (low <= high) {
@@ -307,8 +307,69 @@ function indexOfId(ids: Float64Array, id: number) {
 }
 
 /** Latitude or longitude of a node as an integer of 1e-7 degrees. */
-function coordinate(raw: number, offset: number, granularity: number) {
+export function coordinate(raw: number, offset: number, granularity: number) {
   return Math.round((offset + granularity * raw) / 100);
+}
+
+/** The coordinates of the wanted nodes (sorted ids), as integers of 1e-7 degrees, and which of them the file has. */
+export async function readNodeCoordinates(file: FileHandle, index: readonly BlockEntry[], nodeIds: Float64Array, onBlock?: (done: number, total: number) => void) {
+  const latitudes = new Int32Array(nodeIds.length);
+  const longitudes = new Int32Array(nodeIds.length);
+  const found = new Uint8Array(nodeIds.length);
+  const nodeBlocks = index.filter((entry) => entry.hasNodes);
+  let remaining = nodeIds.length;
+  for (let done = 0; done < nodeBlocks.length && remaining > 0; done += 1) {
+    const block = primitiveBlock(await blobData(file, nodeBlocks[done]));
+    const keep = (id: number, lat: number, lon: number) => {
+      const at = indexOfId(nodeIds, id);
+      if (at < 0) return;
+      if (!found[at]) remaining -= 1;
+      found[at] = 1;
+      latitudes[at] = coordinate(lat, block.latOffset, block.granularity);
+      longitudes[at] = coordinate(lon, block.lonOffset, block.granularity);
+    };
+    for (const group of block.groups) {
+      for (const [field, nodes] of groupFields(group)) {
+        if (field === 2) {
+          let ids: ProtoReader | null = null;
+          let lats: ProtoReader | null = null;
+          let lons: ProtoReader | null = null;
+          while (nodes.more) {
+            const [denseField, wire] = nodes.tag();
+            if (denseField === 1 && wire === WIRE_BYTES) ids = nodes.sub();
+            else if (denseField === 8 && wire === WIRE_BYTES) lats = nodes.sub();
+            else if (denseField === 9 && wire === WIRE_BYTES) lons = nodes.sub();
+            else nodes.skip(wire);
+          }
+          if (!ids || !lats || !lons) continue;
+          let id = 0;
+          let lat = 0;
+          let lon = 0;
+          while (ids.more) {
+            id += ids.signed();
+            lat += lats.signed();
+            lon += lons.signed();
+            // The ids of a block grow; most blocks hold no wanted node and are passed over quickly.
+            if (id >= nodeIds[0] && id <= nodeIds[nodeIds.length - 1]) keep(id, lat, lon);
+          }
+        } else if (field === 1) {
+          let id = 0;
+          let lat = 0;
+          let lon = 0;
+          while (nodes.more) {
+            const [nodeField, wire] = nodes.tag();
+            if (nodeField === 1 && wire === WIRE_VARINT) id = nodes.signed();
+            else if (nodeField === 8 && wire === WIRE_VARINT) lat = nodes.signed();
+            else if (nodeField === 9 && wire === WIRE_VARINT) lon = nodes.signed();
+            else nodes.skip(wire);
+          }
+          keep(id, lat, lon);
+        }
+      }
+    }
+    onBlock?.(done + 1, nodeBlocks.length);
+  }
+  return { latitudes, longitudes, found };
 }
 
 /**
@@ -351,64 +412,8 @@ export async function readOsmStreets(path: string, onBatch: (streets: OsmStreet[
       options.onProgress?.({ phase: "ways", done: blob.offset + blob.size, total: fileSize });
     }
     const nodeIds = wanted.seal();
-    const latitudes = new Int32Array(nodeIds.length);
-    const longitudes = new Int32Array(nodeIds.length);
-    const found = new Uint8Array(nodeIds.length);
-
     // 2. The nodes: the coordinates of those, and nothing else.
-    const nodeBlocks = index.filter((entry) => entry.hasNodes);
-    let remaining = nodeIds.length;
-    for (let done = 0; done < nodeBlocks.length && remaining > 0; done += 1) {
-      const block = primitiveBlock(await blobData(file, nodeBlocks[done]));
-      const keep = (id: number, lat: number, lon: number) => {
-        const at = indexOfId(nodeIds, id);
-        if (at < 0) return;
-        if (!found[at]) remaining -= 1;
-        found[at] = 1;
-        latitudes[at] = coordinate(lat, block.latOffset, block.granularity);
-        longitudes[at] = coordinate(lon, block.lonOffset, block.granularity);
-      };
-      for (const group of block.groups) {
-        for (const [field, nodes] of groupFields(group)) {
-          if (field === 2) {
-            let ids: ProtoReader | null = null;
-            let lats: ProtoReader | null = null;
-            let lons: ProtoReader | null = null;
-            while (nodes.more) {
-              const [denseField, wire] = nodes.tag();
-              if (denseField === 1 && wire === WIRE_BYTES) ids = nodes.sub();
-              else if (denseField === 8 && wire === WIRE_BYTES) lats = nodes.sub();
-              else if (denseField === 9 && wire === WIRE_BYTES) lons = nodes.sub();
-              else nodes.skip(wire);
-            }
-            if (!ids || !lats || !lons) continue;
-            let id = 0;
-            let lat = 0;
-            let lon = 0;
-            while (ids.more) {
-              id += ids.signed();
-              lat += lats.signed();
-              lon += lons.signed();
-              // The ids of a block grow; most blocks hold no node of a street and are passed over quickly.
-              if (id >= nodeIds[0] && id <= nodeIds[nodeIds.length - 1]) keep(id, lat, lon);
-            }
-          } else if (field === 1) {
-            let id = 0;
-            let lat = 0;
-            let lon = 0;
-            while (nodes.more) {
-              const [nodeField, wire] = nodes.tag();
-              if (nodeField === 1 && wire === WIRE_VARINT) id = nodes.signed();
-              else if (nodeField === 8 && wire === WIRE_VARINT) lat = nodes.signed();
-              else if (nodeField === 9 && wire === WIRE_VARINT) lon = nodes.signed();
-              else nodes.skip(wire);
-            }
-            keep(id, lat, lon);
-          }
-        }
-      }
-      options.onProgress?.({ phase: "nodes", done: done + 1, total: nodeBlocks.length });
-    }
+    const { latitudes, longitudes, found } = await readNodeCoordinates(file, index, nodeIds, (done, total) => options.onProgress?.({ phase: "nodes", done, total }));
 
     // 3. The ways again, now with their points.
     const wayBlocks = index.filter((entry) => entry.hasWays);

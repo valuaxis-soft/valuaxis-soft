@@ -4057,6 +4057,21 @@ model CalleOsm {
   @@map("devpware_calles_osm")
 }
 
+/// Areas of Mexico copied from OpenStreetMap (ODbL) for the croquis' base map: parks, water, land uses,
+/// buildings, waterways; one row per closed way (`w…`) or multipolygon (`r…`); filled by
+/// scripts/ops/importar-areas.ts. The GiST index over GGeometria lives in migration 067.
+model AreaOsm {
+  IdElementoOsm String                                  @id @map("IdElementoOsm") @db.VarChar(24)
+  /// The kind the base map draws it as (park, water, residential, building, river…; osm-areas.ts).
+  STipoArea     String                                  @map("STipoArea") @db.VarChar(20)
+  GGeometria    Unsupported("geometry(Geometry,4326)") @map("GGeometria")
+  NAreaM2       Float                                   @default(0) @map("NAreaM2")
+  /// When the import last wrote the row; a full import deletes the ones it did not touch.
+  DFechaCarga   DateTime                                @default(now()) @map("DFechaCarga") @db.Timestamptz(3)
+
+  @@map("devpware_areas_osm")
+}
+
 /// Each version of each legal document (migration 064, docs/LEGAL.md). Insert only: a row is never
 /// changed or deleted; a new version is a new row. Published versions of a document have unique
 /// numbers (a partial unique index only in the migration).

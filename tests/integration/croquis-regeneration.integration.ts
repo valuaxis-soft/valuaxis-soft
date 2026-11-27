@@ -94,3 +94,43 @@ test("the old croquis are counted on a dry run, drawn again on the run, and conc
   assert.equal(again.regenerated, 0);
   assert.equal(rendered.length, 1);
 });
+
+test("croquis on the first, one-tone OpenStreetMap base are drawn again with the new look while the valuation is open; a concluded one keeps its croquis", async () => {
+  const fixture = await createValuationFixture();
+  const user = { ...fixture.user, permissions: [...fixture.user.permissions, "AVALUO_EDITAR"] };
+  await saveSubjectLocation(fixture.publicId, user, {
+    location: { point: SUBJECT, address: "Calle Inventada 10, Zapopan", source: "busqueda" },
+    croquis: DEFAULT_CROQUIS_SETTINGS,
+  });
+  // As the generator stored them between 25 and 27 nov 2026: on OpenStreetMap, without the style.
+  const oneTone = await storeEditorImage(user, new File([new Uint8Array(await jpegOf("#f2efe9"))], "croquis-macrolocalizacion.jpg", { type: "image/jpeg" }), "CROQUIS", { base: "openstreetmap" });
+  const sections = initialSectionsFor((await getValuationByPublicId(fixture.publicId, fixture.organizationId))!);
+  const placed = withCroquisImage(sections, { kind: "macro", src: oneTone.url, marker: { kind: "macro" } }).sections;
+  await saveValuationSections({ publicId: fixture.publicId, organizationId: fixture.organizationId, user, sections: buildSectionsPayload(placed) });
+  const rendered: CroquisRenderInput[] = [];
+  const render = async (input: CroquisRenderInput) => {
+    rendered.push(input);
+    return jpegOf("#c8facc");
+  };
+  const options = { organizationId: fixture.organizationId, render };
+
+  // Concluded: untouched, even with --include-concluded (that flag is only for the Google images).
+  await prisma.avaluo.update({ where: { UIdentificadorPublico: fixture.publicId }, data: { BBloqueado: true, DFechaBloqueo: new Date() } });
+  const concluded = await regenerateCroquis({ ...options, apply: true, includeConcluded: true });
+  assert.equal(concluded.concluded, 1);
+  assert.equal(concluded.regenerated, 0);
+  assert.equal(concluded.storedPdfs, 0, "no Google image behind it");
+  assert.equal(rendered.length, 0);
+
+  // Open: drawn again and stamped with the current style.
+  await prisma.avaluo.update({ where: { UIdentificadorPublico: fixture.publicId }, data: { BBloqueado: false, DFechaBloqueo: null } });
+  const run = await regenerateCroquis({ ...options, apply: true });
+  assert.equal(run.regenerated, 1);
+  assert.equal(rendered.length, 1);
+  const metadata = (await prisma.archivo.findFirstOrThrow({ where: { SClaveObjeto: oneTone.key } })).JMetadatos as Record<string, unknown>;
+  assert.equal(metadata.base, "openstreetmap");
+  assert.equal(metadata.estilo, "2");
+  const again = await regenerateCroquis({ ...options, apply: true });
+  assert.equal(again.alreadyOpenStreetMap, 1);
+  assert.equal(again.regenerated, 0);
+});

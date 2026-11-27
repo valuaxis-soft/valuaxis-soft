@@ -35,13 +35,14 @@ import { freeLinesOverlaySvg, type FreeLine } from "../free-lines";
 import { hasHighlights, placedStreetLabels, type CroquisLabelPlacement, type StreetHighlights } from "../highlights";
 import type { NorthArrow } from "../map-styles";
 import { NORTH_ARROW_HEIGHT, NORTH_ARROW_MARGIN, northArrowBox, northArrowPlacement, northArrowSvg } from "../north-arrow-symbols";
-import { attributionBox, attributionSvg, type BaseMapObstacle, type BaseMapWay } from "../osm-base-map";
+import type { BaseMapArea } from "../osm-areas";
+import { CROQUIS_BASE_STYLE, attributionBox, attributionSvg, type BaseMapObstacle, type BaseMapWay } from "../osm-base-map";
 import { STATIC_MAP_SCALE, STATIC_MAP_SIZE, imagePixel } from "../static-map";
 import { spellingKey, withPreferredStreetNames } from "../street-names";
 import type { StreetWay } from "../streets";
 import { mergedStreetWays, type StreetsAroundDto, type ViewBounds } from "../streets-osm";
 import type { LatLon } from "../types";
-import { baseMapWays, renderBaseMapPng } from "./osm-base.service";
+import { baseMapAreas, baseMapWays, renderBaseMapPng } from "./osm-base.service";
 import { streetsNamedInBox } from "./streets-db";
 import { getStreetsAround } from "./streets.service";
 
@@ -217,6 +218,8 @@ export async function composeCroquisImage(
 export interface CroquisSources {
   /** The streets of the base map of the frame (our copy of OpenStreetMap). */
   baseWays: (center: LatLon, zoom: number) => Promise<BaseMapWay[]>;
+  /** The parks, water, land uses and buildings of the frame (our copy, or Overpass while it is empty); none when absent. */
+  baseAreas?: (center: LatLon, zoom: number) => Promise<BaseMapArea[]>;
   /** The named streets around the subject, for the highlighted ones. */
   streetsAround: (point: LatLon) => Promise<StreetsAroundDto>;
   /** Every piece of the highlighted streets crossing the frame; none when absent. */
@@ -225,6 +228,7 @@ export interface CroquisSources {
 
 const DEFAULT_SOURCES: CroquisSources = {
   baseWays: (center, zoom) => baseMapWays(center, zoom),
+  baseAreas: (center, zoom) => baseMapAreas(center, zoom),
   streetsAround: (point) => getStreetsAround(point),
   namedInFrame: namedStreetsInFrame,
 };
@@ -237,8 +241,9 @@ const DEFAULT_SOURCES: CroquisSources = {
  */
 export async function renderCroquisImage(input: CroquisRenderInput, sources: CroquisSources = DEFAULT_SOURCES) {
   const streets = await resolveCroquisStreets(input, sources.streetsAround, sources.namedInFrame ?? noNamedStreets);
-  const ways = await sources.baseWays(input.center, input.zoom);
+  const [ways, areas] = await Promise.all([sources.baseWays(input.center, input.zoom), sources.baseAreas?.(input.center, input.zoom) ?? []]);
   const base = await renderBaseMapPng(input.center, input.zoom, ways, {
+    areas,
     scale: STATIC_MAP_SCALE,
     obstacles: baseMapObstacles(input, streets),
     namedElsewhere: new Set(streets.labels.map((label) => label.name)),
@@ -249,12 +254,12 @@ export async function renderCroquisImage(input: CroquisRenderInput, sources: Cro
 }
 
 /** How the file registry tells a croquis apart: its «uso», and since 25 nov 2026 the base it was drawn on (the regeneration skips those). */
-export const CROQUIS_FILE_METADATA = { uso: "CROQUIS", base: "openstreetmap" } as const;
+export const CROQUIS_FILE_METADATA = { uso: "CROQUIS", base: "openstreetmap", estilo: CROQUIS_BASE_STYLE } as const;
 
 /** The composed image stored as an image of the editor, with its stable address. */
 export async function storeCroquisImage(user: Pick<AuthUser, "id" | "organizationId">, kind: CroquisKind, jpeg: Buffer): Promise<EditorImageDto> {
   const file = new File([new Uint8Array(jpeg)], `${CROQUIS_IMAGE_IDS[kind]}.jpg`, { type: "image/jpeg" });
-  return storeEditorImage(user, file, CROQUIS_FILE_METADATA.uso, { base: CROQUIS_FILE_METADATA.base });
+  return storeEditorImage(user, file, CROQUIS_FILE_METADATA.uso, { base: CROQUIS_FILE_METADATA.base, estilo: CROQUIS_FILE_METADATA.estilo });
 }
 
 /** Render and store, in that order. */

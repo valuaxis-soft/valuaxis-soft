@@ -12,14 +12,15 @@ import type { CroquisLabelPlacement } from "../highlights";
 import type { CroquisStreets } from "../croquis-streets";
 import { FREE_LINE_OPACITY, freeLinePixels, type FreeLine } from "../free-lines";
 import { placedStreetLabels, uprightAngle, type StreetLabel } from "../highlights";
-import { OSM_CROQUIS_ATTRIBUTION } from "../osm-base-map";
+import { CROQUIS_BASE_STYLE, OSM_CROQUIS_ATTRIBUTION } from "../osm-base-map";
 import { STATIC_MAP_SIZE, imagePixel, pointAtPixel } from "../static-map";
 import type { LatLon } from "../types";
 
 type Drag = { name: string; mode: "move" | "turn"; grab: { x: number; y: number } };
 
 /** The base map of the frame as the server draws it for the stored croquis (GET /api/mapas/base-croquis). */
-const croquisBaseUrl = (center: LatLon, zoom: number) => `/api/mapas/base-croquis?lat=${center[0].toFixed(6)}&lon=${center[1].toFixed(6)}&zoom=${zoom}`;
+// `v` changes with the look of the base map, so a browser that kept yesterday's base for a day asks for the new one.
+const croquisBaseUrl = (center: LatLon, zoom: number) => `/api/mapas/base-croquis?lat=${center[0].toFixed(6)}&lon=${center[1].toFixed(6)}&zoom=${zoom}&v=${CROQUIS_BASE_STYLE}`;
 
 /**
  * «Letreros» of one croquis (V5.7-14): the frame of the image as a sketch
