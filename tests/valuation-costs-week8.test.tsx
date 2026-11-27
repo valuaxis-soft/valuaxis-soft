@@ -213,7 +213,10 @@ test("the tables of a calculation's block are dragged as any block's, without «
   };
   const input = toIncomeEngineInput(income);
   assert.ok(input.ok);
-  const block = incomeDocumentBlocks(income, computeIncomeApproach(input.input, DEFAULT_ENGINE_CONFIG)).find((item) => item.id === "motor-ingresos-tasa")!;
+  // The tables of «Cálculo de tasa» and «Tasa a utilizar», laid out together as a block's.
+  const written = incomeDocumentBlocks(income, computeIncomeApproach(input.input, DEFAULT_ENGINE_CONFIG))[0];
+  const tables = written.apartados.filter((apartado) => apartado.id.endsWith("-tasa") || apartado.id.endsWith("-tasa-utilizar")).flatMap((apartado) => apartado.tables);
+  const block = { ...written, apartados: [], tables };
   const html = renderToStaticMarkup(createElement(GeneratedBlockTables, {
     block, capture: true, pending: false, readOnly: false,
     onLayoutChange: () => undefined, onUpdateTable: () => undefined, onAddTableColumn: () => undefined, onAddTableRow: () => undefined, onRemoveTable: () => undefined,

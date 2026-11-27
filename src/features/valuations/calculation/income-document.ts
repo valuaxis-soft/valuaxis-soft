@@ -1,20 +1,48 @@
 /**
- * Income approach in the dictamen: generated blocks in the income section with
- * the rentable units, deductions, the rate table and the capitalized value.
+ * Income approach in the dictamen: one generated block, «ENFOQUE DE
+ * INGRESOS», with its subbloques numbered as the books (video 8.14, 08:25:
+ * «tengo un título y tengo sus bloques… sub bloques»; «XII.1 CÁLCULO DE LA
+ * RENTA MENSUAL BRUTA», «XII.2 IMPORTE DE DEDUCCIONES», «XII.3 CALCULO DE
+ * TASA», «XII.4 TASA A UTILIZAR», «XII.5 DETERMINACIÓN DEL VALOR…»), every
+ * datum in a table, the concluded value in the dark bar of the other
+ * approaches. The rent market's dispersion stays in the rent market (08.14,
+ * 01:17: «esto queda ya en mercado de rentas»).
  *
  * Deterministic: the same calculation gives the same blocks, ids and tables,
  * so a valuation saved before can be written again with them.
  */
-import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, rateTableBreakdown, type IncomeApproachResult } from "../engine/income";
-import type { AppSection, Block, TableContent } from "../model";
+import { RATE_TABLE_RATES, rateTableBreakdown, type IncomeApproachResult } from "../engine/income";
+import type { Apartado, AppSection, Block, TableContent } from "../model";
 import { cellStyleKey } from "../services/table-cell-style";
-import type { TableCellStyle, TableV2 } from "../services/table";
-import { rentMarketStats, type IncomeCalculationDto } from "./income-types";
+import type { TableCellStyle, TableSummaryBox, TableSummaryRow, TableV2 } from "../services/table";
+import {
+  concludedMonthlyRentFor,
+  isRatingRow,
+  rateTableOf,
+  ratingColumnsFor,
+  type IncomeCalculationDto,
+  type RateTableRowDto,
+} from "./income-types";
 import { captureColumnPlace } from "./capture-display";
-import { figure, generatedColumnId, generatedRowIds, generatedTable, percent as bookPercent, textColumn, figureColumn } from "./generated-content";
-import { GENERATED_BLOCK_PREFIX } from "./market-document";
+import {
+  figure,
+  figureColumn,
+  generatedApartado,
+  generatedBlock,
+  generatedColumnId,
+  generatedRowIds,
+  generatedTable,
+  moneyColumn,
+  percent as bookPercent,
+  textColumn,
+} from "./generated-content";
+import { isOwnTable } from "./generated-block-layout";
+import { GENERATED_BLOCK_PREFIX, replaceGeneratedBlocks } from "./market-document";
 
 export const INCOME_BLOCK_PREFIX = `${GENERATED_BLOCK_PREFIX}ingresos`;
+/** The one block of the income approach. */
+export const INCOME_BLOCK_ID = `${INCOME_BLOCK_PREFIX}-enfoque`;
+const INCOME_TITLE = "ENFOQUE DE INGRESOS";
 
 /** Template blocks of the income section that the generated blocks stand in for. */
 export const INCOME_TEMPLATE_BLOCK_IDS = [
@@ -46,53 +74,6 @@ const area = (value: number) => `${value.toLocaleString("es-MX", { minimumFracti
 /** The capitalized value, with the legal tender mark, as the conclusion prints it. */
 const legalTender = (value: number) => `${money.format(value)} M.N.`;
 
-function block(id: string, title: string, parts: Partial<Pick<Block, "concepts" | "tables">>): Block {
-  return { id, title, sectionLabel: "", enabled: true, required: false, concepts: parts.concepts ?? [], apartados: [], tables: parts.tables ?? [], images: [] };
-}
-
-/**
- * Concepts with an id of their own (`prefix-key`), so a label the appraiser
- * renamed follows its concept when rows before it come and go.
- */
-const concepts = (prefix: string, rows: [string, string, string][]) =>
-  rows.map(([key, label, value]) => ({ id: `${prefix}-${key}`, label, value, enabled: true }));
-
-/**
- * The rent market's dispersion, as the market approach prints it: the lowest
- * and highest rents offered and homologated, and the initial and final
- * dispersions (max / min). None without rent comparables.
- */
-function dispersionBlock(calculation: IncomeCalculationDto, result: IncomeApproachResult | null): Block[] {
-  const stats = rentMarketStats(calculation, result);
-  if (!stats) return [];
-  const prefix = `${INCOME_BLOCK_PREFIX}-dispersion`;
-  const unit = (value: number) => `${money.format(value)} /m²/mes`;
-  const ratio = (value: number) => value.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return [block(prefix, "DISPERSIÓN DEL MERCADO DE RENTAS", {
-    concepts: concepts(prefix, [
-      ["oferta-minimo", "Mínimo de oferta", unit(stats.offerMin)],
-      ["oferta-maximo", "Máximo de oferta", unit(stats.offerMax)],
-      ["inicial", "Dispersión inicial", ratio(stats.initialDispersion)],
-      ["homologado-minimo", "Mínimo homologado", unit(stats.min)],
-      ["homologado-maximo", "Máximo homologado", unit(stats.max)],
-      ["final", "Dispersión final", ratio(stats.dispersion)],
-    ]),
-  })];
-}
-
-/** The tables of rents and deductions as the dictamen has always saved them (their column ids are their own). */
-function legacyTable(id: string, title: string, columns: string[], rows: string[][]): TableContent {
-  return { id, title, columns, rows, enabled: true };
-}
-
-/** A table the calculation writes, with its title printed as the saved tables of rents and deductions print it. */
-function withCaption(table: TableContent): TableContent {
-  const v2 = table as unknown as TableV2;
-  if (!v2.schema?.hideCaption) return table;
-  const { hideCaption: _hidden, ...schema } = v2.schema;
-  return { ...v2, schema } as unknown as TableContent;
-}
-
 /** Printed where the rate is missing: the value cannot be capitalized yet. */
 export const NO_CAPITALIZATION_RATE = "Sin tasa de capitalización";
 /** Printed where the rent is missing: no unit rent captured nor adopted in the rent market. */
@@ -100,67 +81,79 @@ export const NO_UNIT_RENT = "Sin renta unitaria";
 
 const EMPTY = "—";
 
+/**
+ * A table the calculation writes, with its title printed as the tables of
+ * rents and deductions always printed it: «Mostrar el título en el dictamen»
+ * starts checked and unchecking it hides it (video 8.14, 20:44).
+ */
+function withCaption(table: TableContent): TableContent {
+  const v2 = table as unknown as TableV2;
+  if (!v2.schema?.hideCaption) return table;
+  const { hideCaption: _hidden, ...schema } = v2.schema;
+  return { ...v2, schema } as unknown as TableContent;
+}
+
+/* ------------------------------------------------------------------ */
+/*  Ids: the block, its subbloques and its tables                      */
+/* ------------------------------------------------------------------ */
+
+const P = INCOME_BLOCK_PREFIX;
+const apartadoId = (key: string) => `${INCOME_BLOCK_ID}-${key}`;
+const UNITS_TABLE_ID = `${P}-tabla-rentas`;
+const DEDUCTIONS_TABLE_ID = `${P}-tabla-deducciones`;
+const DEDUCTIONS_SECOND_TABLE_ID = `${P}-tabla-deducciones-2`;
+const RATE_TABLE_ID = `${P}-tabla-calculo-tasa`;
+const RATE_TO_USE_TABLE_ID = `${P}-tabla-tasa-utilizar`;
+const RATE_RESULT_TABLE_ID = `${P}-tabla-resultado-tasa`;
+const ANNUITY_TABLE_ID = `${P}-tabla-tasa-anualidad`;
+const MARKET_RATE_TABLE_ID = `${P}-tabla-tasa-mercado`;
+const RESULT_TABLE_ID = `${P}-tabla-resultado`;
+
+const rowIdOf = (tableId: string, key: string) => generatedRowIds(tableId, 1, [key])[0];
+
+/** The rows of the value's table, by what each is. */
+type ResultRow = "bruta" | "vacios" | "efectiva" | "deducciones" | "neta-mensual" | "neta-anual" | "tasa" | "sin-redondeo" | "negociacion" | "gastos";
+
+/* ------------------------------------------------------------------ */
+/*  Where each deduction goes                                          */
+/* ------------------------------------------------------------------ */
+
+/**
+ * The table and row of each deduction: one table, or two side by side when
+ * the appraiser divides it (video 8.14, 16:10: «me gustaría que se pudiera
+ * dividir en dos»); the second starts at `split`. Both count in the total.
+ */
+export function deductionPlaces(count: number, split: number | null | undefined): { table: string; row: string }[] {
+  const at = split && split > 0 && split < count ? split : count;
+  const first = generatedRowIds(DEDUCTIONS_TABLE_ID, at);
+  const second = generatedRowIds(DEDUCTIONS_SECOND_TABLE_ID, count - at);
+  return [
+    ...first.map((row) => ({ table: DEDUCTIONS_TABLE_ID, row })),
+    ...second.map((row) => ({ table: DEDUCTIONS_SECOND_TABLE_ID, row })),
+  ];
+}
+
 /* ------------------------------------------------------------------ */
 /*  XII.3 Cálculo de tasa (Bravo Armejo)                               */
 /* ------------------------------------------------------------------ */
 
-/**
- * The criteria of the rate table as the books print them («XII.3 CALCULO DE
- * TASA», TCH and Arandas, rows 30 to 45): what each column means, in one or
- * two rows, and under them the row where the column is rated. In the order of
- * RATE_TABLE_CRITERIA.
- */
-const RATE_TABLE_ROWS: { key: string; rows: string[][] }[] = [
-  { key: "edad", rows: [["EDAD (AÑOS)", "0 - 5", "5 - 20", "20 - 40", "40 - 50", "50 - 60", "MÁS DE 60"]] },
-  { key: "vida-util", rows: [["VIDA ÚTIL REMANENTE", "MÁS DE 60", "50 - 60", "40 - 50", "20 - 40", "5 - 20", "TERMINADA"]] },
-  { key: "conservacion", rows: [["ESTADO DE CONSERVACIÓN", "NUEVA", "MUY BUENO", "BUENO", "REGULAR", "MALO", "RUINOSO"]] },
-  { key: "proyecto", rows: [["PROYECTO", "MUY BUENO", "BUENO", "ADECUADO", "REGULAR", "DEFICIENTE", "MALO"]] },
-  {
-    key: "relacion",
-    rows: [
-      ["REL. SUP. (TERRENO/CONSTR.)", "CONST>TERR", "CONST>TERR", "CONST>TERR", "CONST=TERR", "TERR > CONST", "TERR > CONST"],
-      ["RELACIÓN", "MAYOR 3-1", "HASTA 3-1", "HASTA 2-1", "1 -1", "HASTA 3-1", "MAYOR 3-1"],
-    ],
-  },
-  {
-    key: "uso",
-    rows: [
-      ["USO DEL INMUEBLE", "CASA", "EDIF. PROD.", "DPTO/CASA", "OFNA/LOCAL", "OFNA/LOCAL", "BODEGA"],
-      ["INMUEBLE", "UNIF.", "HAB-COM", "CONDOM.", "CONDOM.", "UNIF.", "INDUSTRIA"],
-    ],
-  },
-  { key: "zona", rows: [["CLASIFICACIÓN DE ZONA", "LUJO", "1ER. ORDEN", "2DO. ORDEN", "3ER. ORDEN", "PROL. SERV. COM.", "PROL. SERV. INC."]] },
-];
+/** The ids of the rows of the rate table, by the key of each. */
+const rateRowIds = (rows: ReadonlyArray<RateTableRowDto>) => generatedRowIds(RATE_TABLE_ID, rows.length, rows.map((row) => row.key));
 
-const RATE_TABLE_ID = `${INCOME_BLOCK_PREFIX}-tabla-calculo-tasa`;
-const RATE_TO_USE_TABLE_ID = `${INCOME_BLOCK_PREFIX}-tabla-tasa-utilizar`;
-const RATE_RESULT_TABLE_ID = `${INCOME_BLOCK_PREFIX}-tabla-resultado-tasa`;
-/** The rated row of each criterion: «calificación», as the books. */
-const RATING_LABEL = "calificación";
-
-const rowKeyOf = (key: string, index: number) => (index === 0 ? key : `${key}-${index + 1}`);
-const ratingKey = (key: string) => `calificacion-${key}`;
-const rowIdOf = (tableId: string, key: string) => generatedRowIds(tableId, 1, [key])[0];
-
-/** The rows of the rate table and the key of each, as the books lay it out; `marks` writes the 1 of each rated column. */
-function rateTableRows(ratingColumns: ReadonlyArray<number | null>): { rows: string[][]; keys: string[] } {
-  const rows: string[][] = [];
-  const keys: string[] = [];
-  RATE_TABLE_ROWS.forEach((criterion, index) => {
-    criterion.rows.forEach((row, rowIndex) => {
-      rows.push(row);
-      keys.push(rowKeyOf(criterion.key, rowIndex));
-    });
-    const chosen = ratingColumns[index] ?? null;
-    rows.push([RATING_LABEL, ...RATE_TABLE_RATES.map((_, column) => (column === chosen ? "1" : ""))]);
-    keys.push(ratingKey(criterion.key));
+/** The rows of the rate table as they print: the options of each criterion and the 1 of each rated column in its «calificación». */
+function rateTableTexts(rows: ReadonlyArray<RateTableRowDto>, ratingColumns: ReadonlyArray<number | null>): string[][] {
+  let criterion = 0;
+  return rows.map((row) => {
+    if (!isRatingRow(row)) return [row.cells[0] ?? "", ...RATE_TABLE_RATES.map((_, column) => row.cells[column + 1] ?? "")];
+    const chosen = ratingColumns[criterion] ?? null;
+    criterion += 1;
+    return [row.cells[0] ?? "", ...RATE_TABLE_RATES.map((_, column) => (column === chosen ? "1" : ""))];
   });
-  return { rows, keys };
 }
 
 /** What the ratings give: the sums, the capitalization, the partial rates and the resultant rate, as the books close the table. */
 function rateResultRows(ratingColumns: ReadonlyArray<number | null>): { rows: string[][]; keys: string[] } {
-  const breakdown = rateTableBreakdown(RATE_TABLE_CRITERIA.map((_, index) => ratingColumns[index] ?? null));
+  const breakdown = rateTableBreakdown(ratingColumns);
   return {
     rows: [
       ["SUMA CALIFICACIONES", ...breakdown.sums.map((sum) => String(sum))],
@@ -174,48 +167,43 @@ function rateResultRows(ratingColumns: ReadonlyArray<number | null>): { rows: st
 }
 
 /** Every cell of a table centered (video 8.10, 23:40: «centrado todo»), with the style of each row on its concept. */
-function centeredCells(table: TableV2, conceptStyle: (key: string, index: number) => TableCellStyle): Record<string, TableCellStyle> {
+function centeredCells(table: TableV2, conceptStyle: (index: number) => TableCellStyle): Record<string, TableCellStyle> {
   const styles: Record<string, TableCellStyle> = {};
   table.rows.forEach((row, index) => {
-    const key = row.id;
     table.columns.forEach((column, columnIndex) => {
-      styles[cellStyleKey(key, column.id)] = columnIndex === 0 ? { align: "center", ...conceptStyle(key, index) } : { align: "center" };
+      styles[cellStyleKey(row.id, column.id)] = columnIndex === 0 ? { align: "center", ...conceptStyle(index) } : { align: "center" };
     });
   });
   return styles;
 }
 
+const ensureV2 = (content: TableContent) => content as unknown as TableV2;
+const asContent = (table: TableV2) => table as unknown as TableContent;
+
 /**
  * «XII.3 CÁLCULO DE TASA» as the book reads (video 8.10, 23:20): CONCEPTO and
- * the six rates under TASAS, each criterion in bold with its second row
- * («RELACIÓN», «INMUEBLE») under it in italics and its «calificación» row,
- * every cell centered. The «calificación» rows are shaded with the palette's
- * alternate table color, the others white (24 nov 2026).
+ * the six rates under TASAS, each criterion in bold with its second rows in
+ * italics, and its «calificación» row; every cell centered. A row reading
+ * «calificación» is shaded with the palette's alternate color wherever the
+ * appraiser puts it, the others white (video 8.14, 24:20: «se debería de
+ * alternar automáticamente»).
  */
-function rateTable(ratingColumns: ReadonlyArray<number | null>): TableContent {
-  const { rows, keys } = rateTableRows(ratingColumns);
+function rateTable(rows: ReadonlyArray<RateTableRowDto>, ratingColumns: ReadonlyArray<number | null>): TableContent {
   const columns = [textColumn("CONCEPTO"), ...RATE_TABLE_RATES.map((rate) => figureColumn(bookPercent(rate), { group: "TASAS" }))];
-  const generated = ensureV2(generatedTable(RATE_TABLE_ID, "Cálculo de tasa", columns, rows, { rowKeys: keys }));
-  const rowIds = generated.rows.map((row) => row.id);
-  const shaded = keys.flatMap((key, index) => (key.startsWith("calificacion-") ? [rowIds[index]] : []));
-  // The criteria in bold, as the books; their second rows in italics; «calificación» plain.
-  const styles = centeredCells(generated, (_, index) => {
-    const key = keys[index];
-    if (key.startsWith("calificacion-")) return {};
-    return /-\d+$/.test(key) ? { italic: true } : { bold: true };
-  });
-  return {
-    ...generated,
-    schema: { ...generated.schema!, shadedRows: shaded, cellStyles: styles, keepTogether: true },
-  } as unknown as TableContent;
+  const generated = ensureV2(generatedTable(RATE_TABLE_ID, "Cálculo de tasa", columns, rateTableTexts(rows, ratingColumns), { rowKeys: rows.map((row) => row.key) }));
+  const shaded = generated.rows.filter((_, index) => isRatingRow(rows[index])).map((row) => row.id);
+  // The first row of each criterion in bold, as the books; its next rows in italics; «calificación» plain.
+  const firstOfCriterion = rows.map((row, index) => !isRatingRow(row) && (index === 0 || isRatingRow(rows[index - 1])));
+  const styles = centeredCells(generated, (index) => (isRatingRow(rows[index]) ? {} : firstOfCriterion[index] ? { bold: true } : { italic: true }));
+  return asContent({ ...generated, schema: { ...generated.schema!, shadedRows: shaded, cellStyles: styles, keepTogether: true } });
 }
 
 /**
  * What the ratings give, as a table of its own under the criteria (video
  * 8.10, 24:30: «una tablita aparte… esto hasta aquí termina y esto es
- * resultado de esto»): SUMA CALIFICACIONES, CAPITALIZACIÓN (rate / 7 × 100),
- * TASAS PARCIALES and TASA RESULTANTE, in bold and centered, with Bravo
- * Armejo cited under it.
+ * resultado de esto»): SUMA CALIFICACIONES, CAPITALIZACIÓN (rate / criteria
+ * × 100), TASAS PARCIALES and TASA RESULTANTE, in bold and centered, with
+ * Bravo Armejo cited under it.
  */
 function rateResultTable(ratingColumns: ReadonlyArray<number | null>): TableContent {
   const { rows, keys } = rateResultRows(ratingColumns);
@@ -227,13 +215,8 @@ function rateResultTable(ratingColumns: ReadonlyArray<number | null>): TableCont
   const styles = centeredCells(generated, () => ({ bold: true }));
   const last = generated.rows.at(-1)!.id;
   styles[cellStyleKey(last, generatedColumnId(6))] = { bold: true, align: "center" };
-  return {
-    ...generated,
-    schema: { ...generated.schema!, cellStyles: styles, keepTogether: true },
-  } as unknown as TableContent;
+  return asContent({ ...generated, schema: { ...generated.schema!, cellStyles: styles, keepTogether: true } });
 }
-
-const ensureV2 = (content: TableContent) => content as unknown as TableV2;
 
 /** «XII.4 TASA A UTILIZAR»: the resultant rate, the market and weighted rates when captured, and the rate applied. */
 function rateToUseTable(calculation: IncomeCalculationDto, tableRate: number | null, appliedRate: number | null): TableContent {
@@ -244,11 +227,34 @@ function rateToUseTable(calculation: IncomeCalculationDto, tableRate: number | n
     ["III) Tasa ponderada:", shown(calculation.weightedRate ?? null)],
     ["IV) Tasa aplicada:", appliedRate === null ? EMPTY : bookPercent(appliedRate, 4)],
   ], { rowKeys: ["resultante", "mercado", "ponderada", "aplicada"], widthMode: "content" }));
-  return { ...table, schema: { ...table.schema!, keepTogether: true } } as unknown as TableContent;
+  return asContent({ ...table, schema: { ...table.schema!, keepTogether: true } });
 }
 
 /* ------------------------------------------------------------------ */
-/*  The blocks                                                         */
+/*  XII.5 Determinación del valor                                      */
+/* ------------------------------------------------------------------ */
+
+/** The bar of the concluded value, as the market's and the costs' (video 8.14, 26:25: «no tiene formato… denle formato»). */
+const valueBox = (value: string): TableSummaryBox => ({
+  id: "valor",
+  position: "bottom",
+  align: "end",
+  rows: [{ id: "valor", label: "VALOR DE CAPITALIZACIÓN:", value, emphasis: "total" } satisfies TableSummaryRow],
+});
+
+/**
+ * «DETERMINACIÓN DEL VALOR POR CAPITALIZACIÓN DE RENTAS» as the books close
+ * the approach (XII.5, rows 60 to 65): the gross income, the deductions, the
+ * net rents, the rate and, in the bar under them, the value.
+ */
+function resultTable(rows: [ResultRow, string, string][], value: string): TableContent {
+  return generatedTable(RESULT_TABLE_ID, "Determinación del valor", [textColumn("Concepto"), figureColumn("Importe", { align: "right" })],
+    rows.map(([, label, text]) => [label, text]),
+    { rowKeys: rows.map(([key]) => key), summaryBoxes: [valueBox(value)], widthMode: "content" });
+}
+
+/* ------------------------------------------------------------------ */
+/*  The block                                                          */
 /* ------------------------------------------------------------------ */
 
 /** A rentable surface with what it inherits: the subject's area of the rent market (one surface) and the rent adopted there. */
@@ -264,103 +270,141 @@ function inheritedUnits(calculation: IncomeCalculationDto, result: IncomeApproac
 }
 
 /**
- * The blocks of the rate table (TCH) and annuity (TU) methods, with what is
- * captured so far: the rents and deductions are worked out as soon as there
- * are an area and a rent, whatever the rate (FAL-13: «renta mensual —»
+ * The subbloques of the rate table (TCH) and annuity (TU) methods, with what
+ * is captured so far: the rents and deductions are worked out as soon as
+ * there are an area and a rent, whatever the rate (FAL-13: «renta mensual —»
  * until the seven criteria were rated). `capture`: every row being written,
  * also a surface without area or a deduction without its concept.
  */
-function rentBlocks(calculation: IncomeCalculationDto, result: IncomeApproachResult | null, options: { reason?: string; capture?: boolean }): Block[] {
-  const prefix = INCOME_BLOCK_PREFIX;
+function rentApartados(calculation: IncomeCalculationDto, result: IncomeApproachResult | null, options: { reason?: string; capture?: boolean }): Apartado[] {
   const all = inheritedUnits(calculation, result);
   const units = options.capture ? all : all.filter((unit) => (unit.area ?? 0) > 0);
   const priced = units.filter((unit) => (unit.area ?? 0) > 0);
+  // One surface that inherits the rent market's area and rent takes the monthly rent concluded there, rounded as it was (video 8.14, 04:10).
+  const concluded = concludedMonthlyRentFor(calculation);
   const gross = result
     ? result.grossMonthlyRent
-    : priced.length && priced.every((unit) => unit.unitRent !== null)
-      ? priced.reduce((sum, unit) => sum + (unit.area as number) * (unit.unitRent as number), 0)
-      : null;
+    : concluded !== null
+      ? concluded
+      : priced.length && priced.every((unit) => unit.unitRent !== null)
+        ? priced.reduce((sum, unit) => sum + (unit.area as number) * (unit.unitRent as number), 0)
+        : null;
   const deductionsRate = result ? result.deductionsRate : calculation.deductions.reduce((sum, deduction) => sum + (deduction.rate ?? 0), 0);
   const net = result ? result.netMonthlyRent : gross === null ? null : gross * (1 - deductionsRate);
   const rentOr = (value: number | null) => (value === null ? NO_UNIT_RENT : money.format(value));
-  const rows = units.map((unit) => [
+  const missingRent = options.capture ? EMPTY : NO_UNIT_RENT;
+  const unitRows = units.map((unit) => [
     unit.description || "Superficie rentable",
     unit.area === null ? EMPTY : area(unit.area),
-    unit.unitRent === null ? (options.capture ? EMPTY : NO_UNIT_RENT) : `${money.format(unit.unitRent)} /m²/mes`,
-    unit.area === null || unit.unitRent === null ? (options.capture ? EMPTY : NO_UNIT_RENT) : money.format(unit.area * unit.unitRent),
+    unit.unitRent === null ? missingRent : `${money.format(unit.unitRent)} /m²/mes`,
+    concluded !== null ? money.format(concluded) : unit.area === null || unit.unitRent === null ? missingRent : money.format(unit.area * unit.unitRent),
   ]);
+  const unitsTable = withCaption(generatedTable(UNITS_TABLE_ID, "Renta bruta mensual",
+    [textColumn("Concepto"), figureColumn("Superficie rentable"), moneyColumn("Renta unitaria"), moneyColumn("Renta mensual")],
+    unitRows,
+    { summaryBoxes: [{ id: "total", position: "bottom", align: "end", rows: [{ id: "bruta", label: "Renta bruta mensual:", value: rentOr(gross), emphasis: "strong" }] }] }));
+
+  // The deductions, in one table or two side by side, with their total in the table (video 8.14, 21:20: «no puedo llegar al total de deducción»).
   const deductions = options.capture ? calculation.deductions : calculation.deductions.filter((deduction) => deduction.concept.trim());
-  // The capture names its columns as the calculation (col-1…), the same on every render, so a field being typed in stays in its cell.
-  // The dictamen prints their titles («Deducciones sobre la renta bruta»): the capture says so too, so «Mostrar el
-  // título en el dictamen» starts checked and unchecking it hides it (video 8.14, 20:44).
-  const table = (id: string, title: string, columns: string[], tableRows: string[][]) => (options.capture
-    ? withCaption(generatedTable(id, title, columns.map((name) => textColumn(name)), tableRows))
-    : legacyTable(id, title, columns, tableRows));
-  const blocks: Block[] = [
-    ...dispersionBlock(calculation, result),
-    block(`${prefix}-rentas`, "CAPITALIZACIÓN DE RENTAS", {
-      tables: [table(`${prefix}-tabla-rentas`, "Renta bruta mensual", ["Concepto", "Superficie rentable", "Renta unitaria", "Renta mensual"], rows)],
-      concepts: concepts(`${prefix}-rentas`, [
-        ["bruta", "Renta bruta mensual", rentOr(gross)],
-        ...(result?.annuity
-          ? [
-              ["vacios", "Vacíos", `${calculation.annuity.vacancyDays ?? 0} días en ${calculation.annuity.contractYears ?? 0} años (${percent(result.annuity.vacancyFactor)})`],
-              ["efectiva", "Renta bruta efectiva mensual", money.format(result.annuity.effectiveGrossRent)],
-            ] as [string, string, string][]
-          : []),
-        ["deducciones", "Deducciones", percent(deductionsRate)],
-        ["neta-mensual", "Renta neta mensual", rentOr(net)],
-        ["neta-anual", "Renta neta anual", rentOr(result ? result.netAnnualRent : net === null ? null : net * 12)],
-      ]),
-    }),
-    block(`${prefix}-deducciones`, "DEDUCCIONES", {
-      tables: [table(`${prefix}-tabla-deducciones`, "Deducciones sobre la renta bruta", ["Concepto", "Porcentaje", "Importe mensual"],
-        deductions.map((deduction) => [
-          deduction.concept,
-          deduction.rate === null && options.capture ? EMPTY : percent(deduction.rate ?? 0),
-          gross === null || (deduction.rate === null && options.capture) ? (options.capture ? EMPTY : NO_UNIT_RENT) : money.format((deduction.rate ?? 0) * gross),
-        ]))],
-    }),
+  const deductionRows = deductions.map((deduction) => [
+    deduction.concept,
+    deduction.rate === null && options.capture ? EMPTY : percent(deduction.rate ?? 0),
+    gross === null || (deduction.rate === null && options.capture) ? missingRent : money.format((deduction.rate ?? 0) * gross),
+  ]);
+  const places = deductionPlaces(deductionRows.length, calculation.deductionsSplit);
+  const splitAt = places.findIndex((place) => place.table === DEDUCTIONS_SECOND_TABLE_ID);
+  const totalBox: TableSummaryBox = {
+    id: "total",
+    position: "bottom",
+    align: "end",
+    rows: [
+      { id: "porcentaje", label: "TOTAL DE DEDUCCIONES:", value: percent(deductionsRate), emphasis: "strong" },
+      { id: "importe", label: "Importe mensual:", value: gross === null ? missingRent : money.format(gross * deductionsRate) },
+    ],
+  };
+  const deductionColumns = [textColumn("Concepto"), figureColumn("Porcentaje"), moneyColumn("Importe mensual")];
+  const deductionTables = (splitAt === -1
+    ? [generatedTable(DEDUCTIONS_TABLE_ID, "Deducciones sobre la renta bruta", deductionColumns, deductionRows, { summaryBoxes: [totalBox] })]
+    : [
+        generatedTable(DEDUCTIONS_TABLE_ID, "Deducciones sobre la renta bruta", deductionColumns, deductionRows.slice(0, splitAt)),
+        generatedTable(DEDUCTIONS_SECOND_TABLE_ID, "Deducciones sobre la renta bruta (continuación)", deductionColumns, deductionRows.slice(splitAt), { summaryBoxes: [totalBox] }),
+      ]).map(withCaption);
+
+  const apartados: Apartado[] = [
+    generatedApartado(apartadoId("rentas"), "CÁLCULO DE LA RENTA MENSUAL BRUTA", { tables: [unitsTable] }),
+    // Two tables side by side, as the books print the deductions in columns.
+    withSideBySide(generatedApartado(apartadoId("deducciones"), "IMPORTE DE DEDUCCIONES", { tables: deductionTables })),
   ];
 
+  let appliedRate: number | null;
   if (calculation.method === "anualidad") {
     const annuity = result?.annuity;
-    blocks.push(block(`${prefix}-tasa`, "TASA DE CAPITALIZACIÓN", {
-      concepts: concepts(`${prefix}-tasa`, annuity
-        ? [
-            ["tiie", "TIIE a 28 días", percent(calculation.annuity.tiie ?? 0, 4)],
-            ["inflacion", "Inflación anual estimada", percent(calculation.annuity.inflation ?? 0, 4)],
-            ["recuperacion", "Recuperación del capital (1 / vida útil remanente)", percent(1 / (calculation.annuity.remainingLifeYears ?? 1), 4)],
-            ["tasa", "Tasa de capitalización", percent(annuity.option2.rate, 4)],
-            ["valor-presente", "Valor presente de la renta neta mensual a " + annuity.option2.months + " meses", money.format(annuity.option2.value)],
-            ["tasa-mercado", "Tasa de capitalización neta, base mercado", percent(annuity.option1.rate, 4)],
-            ["valor-mercado", "Valor con la tasa base mercado", money.format(annuity.option1.value)],
-            ["opcion", "Valor que se concluye", annuity.option === 2 ? "Valor presente (anualidad)" : "Tasa base mercado"],
-          ]
-        : [["aplicada", "Tasa aplicada", "Sin datos de la anualidad: TIIE, inflación y vida útil remanente"]]),
+    appliedRate = annuity ? annuity.option === 2 ? annuity.option2.rate : annuity.option1.rate : null;
+    const rows: [string, string, string][] = annuity
+      ? [
+          ["tiie", "TIIE a 28 días", percent(calculation.annuity.tiie ?? 0, 4)],
+          ["inflacion", "Inflación anual estimada", percent(calculation.annuity.inflation ?? 0, 4)],
+          ["recuperacion", "Recuperación del capital (1 / vida útil remanente)", percent(1 / (calculation.annuity.remainingLifeYears ?? 1), 4)],
+          ["tasa", "Tasa de capitalización", percent(annuity.option2.rate, 4)],
+          ["valor-presente", `Valor presente de la renta neta mensual a ${annuity.option2.months} meses`, money.format(annuity.option2.value)],
+          ["tasa-mercado", "Tasa de capitalización neta, base mercado", percent(annuity.option1.rate, 4)],
+          ["valor-mercado", "Valor con la tasa base mercado", money.format(annuity.option1.value)],
+          ["opcion", "Valor que se concluye", annuity.option === 2 ? "Valor presente (anualidad)" : "Tasa base mercado"],
+        ]
+      : [["aplicada", "Tasa aplicada", "Sin datos de la anualidad: TIIE, inflación y vida útil remanente"]];
+    apartados.push(generatedApartado(apartadoId("tasa"), "TASA DE CAPITALIZACIÓN", {
+      tables: [generatedTable(ANNUITY_TABLE_ID, "Tasa de capitalización", [textColumn("Concepto"), figureColumn("Valor", { align: "right" })],
+        rows.map(([, label, value]) => [label, value]), { rowKeys: rows.map(([key]) => key), widthMode: "content" })],
     }));
   } else {
-    const tableRate = result?.tableRate ?? rateTableBreakdown(RATE_TABLE_CRITERIA.map((_, index) => calculation.ratingColumns[index] ?? null)).resultant;
-    const appliedRate = result?.appliedRate ?? calculation.appliedRate ?? tableRate;
-    blocks.push(block(`${prefix}-tasa`, "TASA DE CAPITALIZACIÓN", {
-      tables: [rateTable(calculation.ratingColumns), rateResultTable(calculation.ratingColumns), rateToUseTable(calculation, tableRate, appliedRate)],
-    }));
+    const rows = rateTableOf(calculation);
+    const ratings = ratingColumnsFor(rows, calculation.ratingColumns);
+    const tableRate = result?.tableRate ?? rateTableBreakdown(ratings).resultant;
+    appliedRate = result?.appliedRate ?? calculation.appliedRate ?? tableRate;
+    apartados.push(
+      generatedApartado(apartadoId("tasa"), "CÁLCULO DE TASA", { tables: [rateTable(rows, ratings), rateResultTable(ratings)] }),
+      generatedApartado(apartadoId("tasa-utilizar"), "TASA A UTILIZAR", { tables: [rateToUseTable(calculation, tableRate, appliedRate)] }),
+    );
   }
 
   const missing = gross === null
     ? (options.reason ? `${NO_UNIT_RENT}: ${options.reason}` : NO_UNIT_RENT)
     : options.reason ?? NO_CAPITALIZATION_RATE;
   const rounded = result && calculation.rounding !== null && calculation.rounding !== undefined;
-  blocks.push(block(`${prefix}-resultado`, "RESULTADO DEL ENFOQUE DE INGRESOS", {
-    concepts: concepts(`${prefix}-resultado`, result
+  const annual = result ? result.netAnnualRent : net === null ? null : net * 12;
+  const resultRows: [ResultRow, string, string][] = [
+    ["bruta", "Ingreso bruto mensual ($):", rentOr(gross)],
+    ...(result?.annuity
       ? [
-          ...(rounded ? [["sin-redondeo", "Valor por capitalización de rentas, sin redondear", money.format(result.unroundedValue)] as [string, string, string]] : []),
-          ["valor", "Valor por capitalización de rentas", legalTender(result.value)],
-        ]
-      : [["valor", "Valor por capitalización de rentas", missing]]),
+          ["vacios", "Vacíos:", `${calculation.annuity.vacancyDays ?? 0} días en ${calculation.annuity.contractYears ?? 0} años (${percent(result.annuity.vacancyFactor)})`],
+          ["efectiva", "Renta bruta efectiva mensual ($):", money.format(result.annuity.effectiveGrossRent)],
+        ] as [ResultRow, string, string][]
+      : []),
+    ["deducciones", "Total de deducciones (%):", percent(deductionsRate)],
+    ["neta-mensual", "Renta neta mensual ($):", rentOr(net)],
+    ["neta-anual", "Renta neta anual ($):", rentOr(annual)],
+    ["tasa", "Tasa de capitalización (%):", appliedRate === null ? EMPTY : percent(appliedRate, 4)],
+    ...(rounded ? [["sin-redondeo", "Valor sin redondear:", money.format(result.unroundedValue)] as [ResultRow, string, string]] : []),
+  ];
+  apartados.push(generatedApartado(apartadoId("resultado"), "DETERMINACIÓN DEL VALOR POR CAPITALIZACIÓN DE RENTAS", {
+    tables: [resultTable(resultRows, result ? legalTender(result.value) : missing)],
   }));
-  return blocks;
+  return apartados;
 }
+
+/** Two tables of a subbloque in one row, side by side; one table, as it comes. */
+function withSideBySide(apartado: Apartado): Apartado {
+  if (apartado.tables.length < 2) return apartado;
+  return {
+    ...apartado,
+    contentLayout: {
+      version: 2,
+      rows: [{ id: `r-${apartado.id}`, columns: apartado.tables.map((table) => ({ id: `c-${table.id}`, items: [{ type: "table" as const, id: table.id }] })) }],
+    },
+  };
+}
+
+const incomeBlock = (apartados: Apartado[]): Block[] => (apartados.length ? [generatedBlock(INCOME_BLOCK_ID, INCOME_TITLE, { apartados })] : []);
 
 /**
  * What the income approach can already print while the calculation is not
@@ -373,34 +417,41 @@ export function partialIncomeBlocks(calculation: IncomeCalculationDto, reason: s
   if (calculation.method === "mercado") {
     const priced = Object.values(calculation.marketRate.salePrices).some((price) => price && price > 0);
     if (!priced && !calculation.rentMarket.comparables.length) return [];
-    return [block(`${INCOME_BLOCK_PREFIX}-resultado`, "RESULTADO DEL ENFOQUE DE INGRESOS", {
-      concepts: concepts(`${INCOME_BLOCK_PREFIX}-resultado`, [["valor", "Valor por capitalización de rentas", reason]]),
-    })];
+    return incomeBlock([generatedApartado(apartadoId("resultado"), "DETERMINACIÓN DEL VALOR POR CAPITALIZACIÓN DE RENTAS", {
+      tables: [resultTable([["tasa", "Tasa de mercado (promedio):", EMPTY]], reason)],
+    })]);
   }
-  return rentBlocks(calculation, null, { reason });
+  return incomeBlock(rentApartados(calculation, null, { reason }));
 }
 
 export function incomeDocumentBlocks(calculation: IncomeCalculationDto, result: IncomeApproachResult | null, reason?: string): Block[] {
   if (!result) return reason ? partialIncomeBlocks(calculation, reason) : [];
-  if (result.marketRate) return [...dispersionBlock(calculation, result), ...marketRateBlocks(calculation, result, result.marketRate)];
-  return rentBlocks(calculation, result, {});
+  if (result.marketRate) return incomeBlock(marketRateApartados(calculation, result, result.marketRate));
+  return incomeBlock(rentApartados(calculation, result, {}));
 }
 
 /**
  * Where the income approach captures in the tables of its pages: the rentable
- * surfaces, the deductions, the 1 of each criterion of the rate table and the
- * rates of «Tasa a utilizar».
+ * surfaces, the deductions, the rows of the rate table and the 1 of each
+ * criterion, the rates of «Tasa a utilizar» and the value's bar.
  */
 export const INCOME_CAPTURE = {
   // By place: the tables of rents and deductions were saved with column ids of their own.
-  units: { table: `${INCOME_BLOCK_PREFIX}-tabla-rentas`, description: captureColumnPlace(0), area: captureColumnPlace(1), unitRent: captureColumnPlace(2) },
-  deductions: { table: `${INCOME_BLOCK_PREFIX}-tabla-deducciones`, concept: captureColumnPlace(0), rate: captureColumnPlace(1) },
-  /** The «calificación» row of each criterion, and the column of each rate (7 % … 12 %). */
+  units: { table: UNITS_TABLE_ID, description: captureColumnPlace(0), area: captureColumnPlace(1), unitRent: captureColumnPlace(2), monthly: captureColumnPlace(3) },
+  deductions: {
+    tables: [DEDUCTIONS_TABLE_ID, DEDUCTIONS_SECOND_TABLE_ID] as const,
+    concept: captureColumnPlace(0),
+    rate: captureColumnPlace(1),
+    amount: captureColumnPlace(2),
+    places: deductionPlaces,
+  },
   /** The table of what the ratings give, under the criteria. */
   rateResult: { table: RATE_RESULT_TABLE_ID },
+  /** Bravo Armejo's table: each row by its key, the column of each rate (7 % … 12 %). */
   rating: {
     table: RATE_TABLE_ID,
-    row: (criterion: number) => rowIdOf(RATE_TABLE_ID, ratingKey(RATE_TABLE_ROWS[criterion].key)),
+    rowIds: rateRowIds,
+    label: generatedColumnId(0),
     column: (rate: number) => generatedColumnId(rate + 1),
   },
   rateToUse: {
@@ -411,6 +462,13 @@ export const INCOME_CAPTURE = {
       weightedRate: rowIdOf(RATE_TO_USE_TABLE_ID, "ponderada"),
       appliedRate: rowIdOf(RATE_TO_USE_TABLE_ID, "aplicada"),
     },
+  },
+  /** «Determinación del valor»: its rows, the column of its figures and the bar of the value. */
+  result: {
+    table: RESULT_TABLE_ID,
+    row: (key: ResultRow) => rowIdOf(RESULT_TABLE_ID, key),
+    column: generatedColumnId(1),
+    box: "valor.valor",
   },
   rows: (table: string, count: number) => generatedRowIds(table, count),
 };
@@ -424,37 +482,71 @@ export const INCOME_CAPTURE = {
  */
 export function incomeCaptureBlocks(calculation: IncomeCalculationDto, result: IncomeApproachResult | null): Block[] {
   if (calculation.method === "mercado") return [];
-  return rentBlocks(calculation, result && !result.marketRate ? result : null, { capture: true });
+  return incomeBlock(rentApartados(calculation, result && !result.marketRate ? result : null, { capture: true }));
 }
 
 /** TR: the market rate from each rent comparable's income against its sale price. */
-function marketRateBlocks(calculation: IncomeCalculationDto, result: IncomeApproachResult, market: NonNullable<IncomeApproachResult["marketRate"]>): Block[] {
-  const prefix = INCOME_BLOCK_PREFIX;
+function marketRateApartados(calculation: IncomeCalculationDto, result: IncomeApproachResult, market: NonNullable<IncomeApproachResult["marketRate"]>): Apartado[] {
   const locations = new Map(calculation.rentMarket.comparables.map((row) => [String(row.reference), row.location]));
   const rounded = calculation.rounding !== null && calculation.rounding !== undefined;
   return [
-    block(`${prefix}-tasa-mercado`, "TASA DE CAPITALIZACIÓN DE MERCADO", {
-      tables: [legacyTable(`${prefix}-tabla-tasa-mercado`, "Ingreso neto de operación contra precio de venta",
-        ["Comparable", "Ingreso neto anual", "Precio de venta", "Tasa"],
+    generatedApartado(apartadoId("tasa-mercado"), "TASA DE CAPITALIZACIÓN DE MERCADO", {
+      tables: [generatedTable(MARKET_RATE_TABLE_ID, "Ingreso neto de operación contra precio de venta",
+        [textColumn("Comparable"), moneyColumn("Ingreso neto anual"), moneyColumn("Precio de venta"), figureColumn("Tasa")],
         market.comparables.map((row) => [
           `${row.id}. ${locations.get(row.id) ?? ""}`.trim(),
           money.format(row.netIncome),
           money.format(row.salePrice),
           percent(row.rate, 4),
         ]))],
-      concepts: concepts(`${prefix}-tasa-mercado`, [
-        ["negociacion", "Negociación", percent(calculation.marketRate.negotiation ?? 0)],
-        ["vacios", "Vacíos", percent(calculation.marketRate.vacancy ?? 0)],
-        ["gastos", "Gastos de operación", percent(market.expensesRate)],
-        ["tasa", "Tasa de mercado (promedio)", percent(market.meanRate, 4)],
-      ]),
     }),
-    block(`${prefix}-resultado`, "RESULTADO DEL ENFOQUE DE INGRESOS", {
-      concepts: concepts(`${prefix}-resultado`, [
-        ["ingreso", "Ingreso neto de operación anual del sujeto", money.format(result.netAnnualRent)],
-        ...(rounded ? [["sin-redondeo", "Valor por capitalización de rentas, sin redondear", money.format(result.unroundedValue)] as [string, string, string]] : []),
-        ["valor", "Valor por capitalización de rentas", legalTender(result.value)],
-      ]),
+    generatedApartado(apartadoId("resultado"), "DETERMINACIÓN DEL VALOR POR CAPITALIZACIÓN DE RENTAS", {
+      tables: [resultTable([
+        ["negociacion", "Negociación:", percent(calculation.marketRate.negotiation ?? 0)],
+        ["vacios", "Vacíos:", percent(calculation.marketRate.vacancy ?? 0)],
+        ["gastos", "Gastos de operación:", percent(market.expensesRate)],
+        ["tasa", "Tasa de mercado (promedio):", percent(market.meanRate, 4)],
+        ["neta-anual", "Ingreso neto de operación anual del sujeto ($):", money.format(result.netAnnualRent)],
+        ...(rounded ? [["sin-redondeo", "Valor sin redondear:", money.format(result.unroundedValue)] as [ResultRow, string, string]] : []),
+      ], legalTender(result.value))],
     }),
   ];
+}
+
+/* ------------------------------------------------------------------ */
+/*  Valuations written with the pages of before                        */
+/* ------------------------------------------------------------------ */
+
+/** The blocks of before, one per page, and the subbloque each became. */
+const LEGACY_BLOCKS: Record<string, string> = {
+  [`${P}-rentas`]: apartadoId("rentas"),
+  [`${P}-deducciones`]: apartadoId("deducciones"),
+  [`${P}-tasa`]: apartadoId("tasa"),
+  [`${P}-tasa-mercado`]: apartadoId("tasa-mercado"),
+  [`${P}-resultado`]: apartadoId("resultado"),
+};
+
+/**
+ * Writes the income pages in the section. A valuation written before with
+ * one block per page (and the rent market's dispersion among them) takes the
+ * one block with its subbloques; the tables the appraiser added to those
+ * blocks go to the subbloque each page became, the dispersion leaves.
+ */
+export function withIncomeBlocks(section: AppSection, blocks: Block[]): AppSection {
+  const legacy = section.blocks.filter((block) => block.id.toLowerCase() in LEGACY_BLOCKS || block.id.toLowerCase() === `${P}-dispersion`);
+  const carried = legacy.length && blocks.length
+    ? blocks.map((block) => {
+        if (block.id !== INCOME_BLOCK_ID) return block;
+        const own = new Map<string, TableContent[]>();
+        for (const old of legacy) {
+          const target = LEGACY_BLOCKS[old.id.toLowerCase()];
+          const tables = old.tables.filter(isOwnTable);
+          if (target && tables.length) own.set(target, [...(own.get(target) ?? []), ...tables]);
+        }
+        return own.size
+          ? { ...block, apartados: block.apartados.map((apartado) => (own.has(apartado.id) ? { ...apartado, tables: [...apartado.tables, ...own.get(apartado.id)!] } : apartado)) }
+          : block;
+      })
+    : blocks;
+  return replaceGeneratedBlocks(section, (block) => block.id.startsWith(INCOME_BLOCK_PREFIX), carried, { placeholderIds: INCOME_TEMPLATE_BLOCK_IDS });
 }

@@ -369,6 +369,12 @@ export type Block = {
   valueTitle?: string;
   /** Only the carátula's company header block: the size of the principal cover image. */
   coverImageSize?: CoverImageSize;
+  /**
+   * Only a block the calculation writes: the ids of its subbloques the
+   * appraiser deleted (video 8.14, 01:47: «ocultar sí, pero eliminar no»).
+   * The calculation does not write them again; «Deshacer» brings them back.
+   */
+  removedApartados?: string[];
 };
 
 export type AppSection = {

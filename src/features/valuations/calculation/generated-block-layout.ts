@@ -81,11 +81,16 @@ export function withAppraiserLayout(block: Block, previous: Block | undefined): 
   const written = new Set(block.tables.map((table) => table.id.toLowerCase()));
   const own = previous.tables.filter((table) => isOwnTable(table) && !written.has(table.id.toLowerCase()));
   const withOwn = own.length ? { ...block, tables: [...block.tables, ...own] } : block;
-  // The tables of each subbloque (a market's data, its homologation) keep how they were arranged too.
+  // The tables of each subbloque (a market's data, its homologation) keep how they were arranged too,
+  // and a table of the appraiser's own added to a subbloque stays in it (video 8.14, 19:50: a second table of deductions).
   const before = new Map(previous.apartados.map((apartado) => [apartado.id.toLowerCase(), apartado]));
   const apartados = withOwn.apartados.map((apartado) => {
-    const kept = before.get(apartado.id.toLowerCase())?.contentLayout;
-    return isContentLayout(kept) ? { ...apartado, contentLayout: keptContentLayout(apartado, kept) } : apartado;
+    const stored = before.get(apartado.id.toLowerCase());
+    const ownIds = new Set(apartado.tables.map((table) => table.id.toLowerCase()));
+    const ownTables = (stored?.tables ?? []).filter((table) => isOwnTable(table) && !ownIds.has(table.id.toLowerCase()));
+    const withTables = ownTables.length ? { ...apartado, tables: [...apartado.tables, ...ownTables] } : apartado;
+    const kept = stored?.contentLayout;
+    return isContentLayout(kept) ? { ...withTables, contentLayout: keptContentLayout(withTables, kept) } : withTables;
   });
   const next = apartados.some((apartado, index) => apartado !== withOwn.apartados[index]) ? { ...withOwn, apartados } : withOwn;
   if (!isContentLayout(previous.contentLayout)) return next;

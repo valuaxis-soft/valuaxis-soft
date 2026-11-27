@@ -1,12 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { CONCLUSION_KEYS, caratulaConclusionValues, conclusionValues, withConceptValues } from "../src/features/valuations/calculation/conclusion-document";
-import { NO_CAPITALIZATION_RATE, NO_UNIT_RENT, incomeDocumentBlocks } from "../src/features/valuations/calculation/income-document";
+import { INCOME_CAPTURE, NO_CAPITALIZATION_RATE, NO_UNIT_RENT, incomeDocumentBlocks } from "../src/features/valuations/calculation/income-document";
 import { DEFAULT_ANNUITY, DEFAULT_DEDUCTIONS, DEFAULT_MARKET_RATE, toIncomeEngineInput, type IncomeCalculationDto } from "../src/features/valuations/calculation/income-types";
 import { concludeValue } from "../src/features/valuations/engine/conclusion";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
 import { computeIncomeApproach } from "../src/features/valuations/engine/income";
-import type { AppSection } from "../src/features/valuations/model";
+import type { AppSection, Block } from "../src/features/valuations/model";
 import { formatConceptValueForDocument } from "../src/features/valuations/services/concept-value-format";
 
 const tch: IncomeCalculationDto = {
@@ -25,16 +25,31 @@ const tch: IncomeCalculationDto = {
   locked: false,
 };
 
-test("the income blocks show rents, deductions, the rate table and the value", () => {
+const SUBBLOQUES = [
+  "motor-ingresos-enfoque-rentas", "motor-ingresos-enfoque-deducciones", "motor-ingresos-enfoque-tasa",
+  "motor-ingresos-enfoque-tasa-utilizar", "motor-ingresos-enfoque-resultado",
+];
+type Rows = { rows: Array<{ id: string; cells: Record<string, { value: string }> }>; schema?: { summaryBoxes?: Array<{ rows: Array<{ value: string }> }> } };
+const tableOf = (blocks: Block[], id: string) => blocks.flatMap((block) => block.apartados.flatMap((apartado) => apartado.tables)).find((table) => table.id === id) as unknown as Rows;
+const cell = (table: Rows, row: string) => table.rows.find((item) => item.id === row)!.cells["col-2"].value;
+
+test("the income approach is one block, «ENFOQUE DE INGRESOS», with its subbloques as the books number them (video 8.14, 08:25)", () => {
   const input = toIncomeEngineInput(tch);
   assert.ok(input.ok);
   const blocks = incomeDocumentBlocks(tch, computeIncomeApproach(input.input, DEFAULT_ENGINE_CONFIG));
-  assert.deepEqual(blocks.map((block) => block.id), ["motor-ingresos-rentas", "motor-ingresos-deducciones", "motor-ingresos-tasa", "motor-ingresos-resultado"]);
-  // «XII.3 Cálculo de tasa» and «XII.4 Tasa a utilizar», as the TCH book.
+  assert.deepEqual(blocks.map((block) => [block.id, block.title]), [["motor-ingresos-enfoque", "ENFOQUE DE INGRESOS"]]);
+  assert.deepEqual(blocks[0].apartados.map((apartado) => apartado.id), SUBBLOQUES);
+  assert.deepEqual(blocks[0].apartados.map((apartado) => apartado.title), [
+    "CÁLCULO DE LA RENTA MENSUAL BRUTA", "IMPORTE DE DEDUCCIONES", "CÁLCULO DE TASA", "TASA A UTILIZAR", "DETERMINACIÓN DEL VALOR POR CAPITALIZACIÓN DE RENTAS",
+  ]);
+  // No concepts without a format: every datum in a table (video 8.14, 13:35).
+  assert.ok(blocks.every((block) => !block.concepts.length && block.apartados.every((apartado) => !apartado.concepts.length)));
   // The results of the ratings in a table of their own under the criteria (video 8.10, 24:30).
-  assert.deepEqual(blocks[2].tables.map((table) => table.title), ["Cálculo de tasa", "Resultado del cálculo de tasa", "Tasa a utilizar"]);
-  // The capitalized value with the legal tender mark (FAL-45).
-  assert.equal(blocks[3].concepts[0].value, "$700,902.93 M.N.");
+  assert.deepEqual(blocks[0].apartados[2].tables.map((table) => table.title), ["Cálculo de tasa", "Resultado del cálculo de tasa"]);
+  // The capitalized value with the legal tender mark (FAL-45), in the bar of the concluded value.
+  assert.equal(tableOf(blocks, "motor-ingresos-tabla-resultado").schema!.summaryBoxes![0].rows[0].value, "$700,902.93 M.N.");
+  // «Total de deducciones» in the table of the deductions (video 8.14, 21:20).
+  assert.deepEqual(tableOf(blocks, "motor-ingresos-tabla-deducciones").schema!.summaryBoxes![0].rows.map((row) => row.value), ["31.00 %", "$2,325.00"]);
 });
 
 test("the income approach waits for the rate: the whole table or a captured rate", () => {
@@ -52,24 +67,24 @@ test("without the rate the blocks print what was captured and «Sin tasa de capi
   const input = toIncomeEngineInput(partial);
   assert.equal(input.ok, false);
   const blocks = incomeDocumentBlocks(partial, null, input.ok ? "" : input.reason);
-  assert.deepEqual(blocks.map((block) => block.id), ["motor-ingresos-rentas", "motor-ingresos-deducciones", "motor-ingresos-tasa", "motor-ingresos-resultado"]);
-  const rents = blocks[0].tables[0] as unknown as { rows: string[][] };
-  assert.deepEqual(rents.rows[0], ["Local", "100.00 m²", "$100.00 /m²/mes", "$10,000.00"]);
-  const values = Object.fromEntries(blocks.flatMap((block) => block.concepts.map((concept) => [concept.id, concept.value])));
-  assert.equal(values["motor-ingresos-rentas-bruta"], "$10,000.00");
-  assert.equal(values["motor-ingresos-rentas-deducciones"], "31.00 %");
-  assert.equal(values["motor-ingresos-rentas-neta-mensual"], "$6,900.00");
-  assert.equal(values["motor-ingresos-rentas-neta-anual"], "$82,800.00");
-  assert.equal(values["motor-ingresos-resultado-valor"], "Califica los siete criterios de la tabla de tasa, o captura la tasa.");
+  assert.deepEqual(blocks[0].apartados.map((apartado) => apartado.id), SUBBLOQUES);
+  const rents = tableOf(blocks, "motor-ingresos-tabla-rentas");
+  assert.deepEqual(Object.values(rents.rows[0].cells).map((item) => item.value), ["Local", "100.00 m²", "$100.00 /m²/mes", "$10,000.00"]);
+  const result = tableOf(blocks, "motor-ingresos-tabla-resultado");
+  assert.equal(cell(result, INCOME_CAPTURE.result.row("bruta")), "$10,000.00");
+  assert.equal(cell(result, INCOME_CAPTURE.result.row("deducciones")), "31.00 %");
+  assert.equal(cell(result, INCOME_CAPTURE.result.row("neta-mensual")), "$6,900.00");
+  assert.equal(cell(result, INCOME_CAPTURE.result.row("neta-anual")), "$82,800.00");
+  assert.equal(result.schema!.summaryBoxes![0].rows[0].value, "Califica los siete criterios de la tabla de tasa, o captura la tasa.");
   // The rate table prints with nothing rated yet: «Tasa a utilizar» says the rate is missing.
-  const toUse = blocks[2].tables[2] as unknown as { rows: Array<{ cells: Record<string, { value: string }> }> };
+  const toUse = tableOf(blocks, INCOME_CAPTURE.rateToUse.table);
   assert.equal(toUse.rows[0].cells["col-2"].value, "—");
   assert.ok(!NO_CAPITALIZATION_RATE.includes("—"));
   // Without any rent the rents say so; without anything captured the pages still print, with dashes, instead of the template's.
   const noRent = incomeDocumentBlocks({ ...partial, rentableUnits: [{ description: "Local", area: 100, unitRent: null }] }, null, "Captura la renta unitaria, o el mercado de rentas.");
-  assert.equal(noRent[0].concepts[0].value, NO_UNIT_RENT);
+  assert.equal(cell(tableOf(noRent, "motor-ingresos-tabla-resultado"), INCOME_CAPTURE.result.row("bruta")), NO_UNIT_RENT);
   const nothing = incomeDocumentBlocks({ ...partial, rentableUnits: [{ description: "", area: null, unitRent: null }] }, null, "Captura la superficie rentable.");
-  assert.deepEqual(nothing.map((block) => block.id), ["motor-ingresos-rentas", "motor-ingresos-deducciones", "motor-ingresos-tasa", "motor-ingresos-resultado"]);
+  assert.deepEqual(nothing[0].apartados.map((apartado) => apartado.id), SUBBLOQUES);
   assert.deepEqual(incomeDocumentBlocks(partial, null), [], "without the reason nothing partial prints, as before");
 });
 

@@ -734,7 +734,19 @@ function withBlockPresentation(block: Block, previous: Block | undefined): Block
     ...(previous.startOnNewPage !== undefined ? { startOnNewPage: previous.startOnNewPage } : {}),
     ...(previous.pageOrientation ? { pageOrientation: previous.pageOrientation } : {}),
     ...(previous.conceptPresentation ? { conceptPresentation: previous.conceptPresentation } : {}),
+    ...(previous.removedApartados?.length ? { removedApartados: previous.removedApartados } : {}),
   };
+}
+
+/**
+ * A block the calculation writes without the subbloques the appraiser
+ * deleted from it (video 8.14, 01:47): they are not written again.
+ */
+export function withoutRemovedApartados(block: Block, removed: ReadonlyArray<string> | undefined): Block {
+  if (!removed?.length) return block;
+  const gone = new Set(removed.map((id) => id.toLowerCase()));
+  const apartados = block.apartados.filter((apartado) => !gone.has(apartado.id.toLowerCase()));
+  return apartados.length === block.apartados.length ? block : { ...block, apartados };
 }
 
 /**
@@ -760,7 +772,10 @@ export function replaceGeneratedBlocks(
   const previous = new Map(current.map((item) => [item.id.toLowerCase(), item]));
   // The columns the appraiser hid, renamed or added stay on the tables the calculation writes again,
   // and so do his own tables in the block and how its tables are laid out (side by side, their order).
-  const laidOut = withTableLayouts(blocks, current).map((item) => withAppraiserTitle(withAppraiserLayout(item, previous.get(item.id.toLowerCase())), previous.get(item.id.toLowerCase())));
+  const laidOut = withTableLayouts(blocks, current).map((item) => {
+    const before = previous.get(item.id.toLowerCase());
+    return withAppraiserTitle(withAppraiserLayout(withoutRemovedApartados(item, before?.removedApartados), before), before);
+  });
   if (sameContent(current, laidOut) && !section.blocks.some(isPlaceholder)) return section;
   // What the appraiser chose for a block stays when the calculation writes it again: hidden, its page break and orientation.
   const written = laidOut.map((item) => withBlockPresentation(item, previous.get(item.id.toLowerCase())));

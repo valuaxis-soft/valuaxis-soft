@@ -9,10 +9,9 @@
 import assert from "node:assert/strict";
 import { after, test } from "node:test";
 import { CONCLUSION_KEYS, isConcludedValueBlock } from "../../src/features/valuations/calculation/conclusion-document";
-import { INCOME_BLOCK_PREFIX, INCOME_TEMPLATE_BLOCK_IDS, incomeDocumentBlocks } from "../../src/features/valuations/calculation/income-document";
+import { INCOME_BLOCK_PREFIX, INCOME_TEMPLATE_BLOCK_IDS, incomeDocumentBlocks, withIncomeBlocks } from "../../src/features/valuations/calculation/income-document";
 import { getIncomeCalculation, saveIncomeCalculation } from "../../src/features/valuations/calculation/income.service";
 import { DEFAULT_INCOME, incomeEngineConfig, toIncomeEngineInput, type IncomeCalculationDto } from "../../src/features/valuations/calculation/income-types";
-import { replaceGeneratedBlocks } from "../../src/features/valuations/calculation/market-document";
 import { initialSectionsFor } from "../../src/features/valuations/components/workspace/model/initial-hydration";
 import { buildSectionsPayload } from "../../src/features/valuations/components/workspace/model/save-payload";
 import { computeIncomeApproach } from "../../src/features/valuations/engine/income";
@@ -42,8 +41,7 @@ function incomePages(calculation: IncomeCalculationDto): Block[] {
     : incomeDocumentBlocks(calculation, null, input.reason);
 }
 const syncIncome = (sections: AppSection[], calculation: IncomeCalculationDto) =>
-  withSection(sections, "ingresos", (section) =>
-    replaceGeneratedBlocks(section, (block) => block.id.startsWith(INCOME_BLOCK_PREFIX), incomePages(calculation), { placeholderIds: INCOME_TEMPLATE_BLOCK_IDS }));
+  withSection(sections, "ingresos", (section) => withIncomeBlocks(section, incomePages(calculation)));
 
 /** What opening it in the editor does: the format (policy «all») and the calculation's pages. */
 async function open(fixture: Fixture) {
@@ -63,9 +61,9 @@ async function oldValuation() {
   });
   const calculation = await getIncomeCalculation(fixture.publicId, fixture.organizationId);
   const current = incomePages(calculation);
-  assert.ok(current.length >= 2, "the income approach writes its pages");
-  // An older generator: the first page had another title and the last page did not exist. The appraiser hid the first one.
-  const stale: Block[] = [{ ...current[0], title: "CAPITALIZACIÓN DE RENTAS (FORMATO ANTERIOR)", enabled: false }, ...current.slice(1, -1)];
+  assert.equal(current.length, 1, "the income approach writes its block");
+  // An older generator: the block had another title and its last subbloque did not exist. The appraiser hid the block.
+  const stale: Block[] = [{ ...current[0], title: "CAPITALIZACIÓN DE RENTAS (FORMATO ANTERIOR)", enabled: false, apartados: current[0].apartados.slice(0, -1) }];
   let sections = await load(fixture);
   sections = withSection(sections, "ingresos", (section) => ({ ...section, blocks: [...stale, ...section.blocks.filter((block) => !INCOME_TEMPLATE_BLOCK_IDS.includes(block.id))] }));
   // The conclusion of a firm template made before: the approaches with their values, the appraiser's text, no concluded value.

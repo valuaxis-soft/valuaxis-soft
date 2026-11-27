@@ -372,7 +372,7 @@ test("8.14 20:44: the deductions' title starts shown as the dictamen prints it, 
     locked: false,
   };
   const capture = incomeCaptureBlocks(calculation, null);
-  const deductions = capture.flatMap((item) => item.tables).find((table) => table.title === "Deducciones sobre la renta bruta")!;
+  const deductions = capture.flatMap((item) => [...item.tables, ...item.apartados.flatMap((apartado) => apartado.tables)]).find((table) => table.title === "Deducciones sobre la renta bruta")!;
   assert.ok(deductions, "the capture has the deductions table");
   assert.notEqual(ensureTableV2(deductions).schema?.hideCaption, true, "shown, as the dictamen prints it");
   // Unchecked in the editor: the layout keeps it hidden, also over the dictamen's table (written with its title shown).

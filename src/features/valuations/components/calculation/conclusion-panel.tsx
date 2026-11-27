@@ -28,7 +28,7 @@ import { DEFAULT_ENGINE_CONFIG, type RoundingDigits } from "@/features/valuation
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
 import { formulaOr, formulasOfFields, type CapturedFormulas } from "@/features/valuations/calculation/captured-formulas";
 import { FormulaInput } from "./formula-input";
-import { RoundingSelect } from "./calculation-controls";
+import { RoundingMenu } from "./rounding-menu";
 import { CALC_SECTION_HEADING } from "./calculation-table-style";
 import { useSerializedSave } from "./use-serialized-save";
 import { marketLeftOut } from "@/features/valuations/services/report-approaches";
@@ -373,18 +373,6 @@ export function ConclusionPanel(props: {
             ))}
           </div>
         ) : null}
-        <Field>
-          <FieldLabel htmlFor="conclusion-rounding">Redondeo de los valores y la conclusión</FieldLabel>
-          <RoundingSelect
-            id="conclusion-rounding"
-            label="Redondeo de la conclusión"
-            value={rounding}
-            onChange={(digits) => {
-              setCalculation({ ...calculation, rounding: digits });
-              save({ rounding: digits });
-            }}
-          />
-        </Field>
       </fieldset>
       {/* The justification written here before printed nothing: it is shown so it can be taken to «Cómo se concluye», which prints. */}
       {justification.trim() ? (
@@ -399,7 +387,18 @@ export function ConclusionPanel(props: {
           <span className="text-muted-foreground">El valor concluido está vinculado con </span>
           <span className="font-medium">{conclusionSourceLabels(current)[CONCLUSION_KEYS.value]}</span>
           <span className="text-muted-foreground">: </span>
-          <span className="font-semibold tabular-nums" data-concluded-value>{formatMoneyForDocument(result.value, { legalTender: true })}</span>
+          {/* Its rounding is an option of the figure itself (video 8.14, 05:20): «⋯» or right click, no box apart. */}
+          <RoundingMenu
+            label="valor concluido"
+            value={rounding}
+            readOnly={readOnly}
+            onChange={(digits) => {
+              setCalculation({ ...calculation, rounding: digits });
+              save({ rounding: digits });
+            }}
+          >
+            <span className="font-semibold tabular-nums" data-concluded-value>{formatMoneyForDocument(result.value, { legalTender: true })}</span>
+          </RoundingMenu>
         </p>
       ) : (
         <p className="text-sm text-muted-foreground">

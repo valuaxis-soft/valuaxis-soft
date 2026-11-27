@@ -148,6 +148,10 @@ test("each method says what is missing before calculating", () => {
 });
 
 test("the dictamen shows the annuity and market-rate detail", () => {
+  type Printed = { id: string; rows: Array<{ cells: Record<string, { value: string }> }>; schema: { summaryBoxes: Array<{ rows: Array<{ value: string }> }> } };
+  const tablesOf = (blocks: ReturnType<typeof incomeDocumentBlocks>) => blocks.flatMap((block) => block.apartados.flatMap((apartado) => apartado.tables)) as unknown as Printed[];
+  const texts = (table: Printed) => table.rows.map((row) => Object.values(row.cells).map((cell) => cell.value));
+  const valueOf = (blocks: ReturnType<typeof incomeDocumentBlocks>) => tablesOf(blocks).find((table) => table.id === "motor-ingresos-tabla-resultado")!.schema.summaryBoxes[0].rows[0].value;
   const tu = dto({
     method: "anualidad",
     annuity: { vacancyDays: 60, contractYears: 2, otherMonthlyIncome: 0, tiie: 0.0792, inflation: 0.045, remainingLifeYears: 12, option: 2 },
@@ -157,9 +161,9 @@ test("the dictamen shows the annuity and market-rate detail", () => {
   const tuInputOk = toIncomeEngineInput(tu);
   assert.ok(tuInputOk.ok);
   const tuBlocks = incomeDocumentBlocks(tu, computeIncomeApproach(tuInputOk.input, EXCEL_PROFILES.TU));
-  const tuRate = tuBlocks.find((block) => block.id === "motor-ingresos-tasa")!;
-  assert.ok(tuRate.concepts.some((concept) => concept.label === "Valor que se concluye" && concept.value === "Valor presente (anualidad)"));
-  assert.equal(tuBlocks.at(-1)!.concepts[0].value, "$110,689.59 M.N.");
+  const tuRate = tablesOf(tuBlocks).find((table) => table.id === "motor-ingresos-tabla-tasa-anualidad")!;
+  assert.ok(texts(tuRate).some(([label, value]) => label === "Valor que se concluye" && value === "Valor presente (anualidad)"));
+  assert.equal(valueOf(tuBlocks), "$110,689.59 M.N.");
 
   const tr = dto({
     method: "mercado",
@@ -174,12 +178,12 @@ test("the dictamen shows the annuity and market-rate detail", () => {
   const trInputOk = toIncomeEngineInput(tr);
   assert.ok(trInputOk.ok);
   const trBlocks = incomeDocumentBlocks(tr, computeIncomeApproach(trInputOk.input, EXCEL_PROFILES.TR));
-  // The rent market's dispersion first, as the market approach prints it.
-  assert.deepEqual(trBlocks.map((block) => block.id), ["motor-ingresos-dispersion", "motor-ingresos-tasa-mercado", "motor-ingresos-resultado"]);
-  const rows = (trBlocks[1].tables[0] as unknown as { rows: string[][] }).rows;
+  // The rent market's dispersion stays in the rent market (video 8.14, 01:17).
+  assert.deepEqual(trBlocks[0].apartados.map((apartado) => apartado.id), ["motor-ingresos-enfoque-tasa-mercado", "motor-ingresos-enfoque-resultado"]);
+  const rows = texts(tablesOf(trBlocks).find((table) => table.id === "motor-ingresos-tabla-tasa-mercado")!);
   assert.equal(rows.length, 4);
   assert.equal(rows[0][0], "1. Parcela 1");
-  assert.equal(trBlocks[2].concepts[1].value, "$5,090,678.68 M.N.");
+  assert.equal(valueOf(trBlocks), "$5,090,678.68 M.N.");
 });
 
 test("sin mercado de rentas, cada tipo con su renta: la adoptada es el promedio ponderado", () => {

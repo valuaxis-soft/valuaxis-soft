@@ -146,6 +146,8 @@ export type ValuationBlockDto = {
   valueChartStyle?: ValueChartStyle;
   /** The carátula's conclusion: the title of the value's box written by hand. */
   valueTitle?: string;
+  /** A block the calculation writes: the subbloques the appraiser deleted. */
+  removedApartados?: string[];
   concepts: ValuationConceptDto[];
   subBlocks: ValuationApartadoDto[];
   tables: ValuationTableDto[];
@@ -840,6 +842,7 @@ function mapNodeToBlock(node: DbNode, label: string, read: TextReader): Valuatio
     ...(blockMetadata.coverImageSize ? { coverImageSize: blockMetadata.coverImageSize } : {}),
     ...(blockMetadata.valueChart ? { valueChart: true } : {}),
     ...(blockMetadata.valueTitle ? { valueTitle: blockMetadata.valueTitle } : {}),
+    ...(blockMetadata.removedApartados ? { removedApartados: blockMetadata.removedApartados } : {}),
     concepts: conceptNodes.map((child) => mapConceptNode(child, read)),
     subBlocks: subBlockNodes.map((child) => {
       const subChildren = child.nodosHijos
