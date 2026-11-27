@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
-import { STREET_LABEL_FONT_FAMILY, streetLabelBox } from "../croquis";
+import { STREET_LABEL_FONT_FAMILY, SUBJECT_PIN_COLOR, SUBJECT_PIN_PATH, streetLabelBox } from "../croquis";
 import type { CroquisLabelPlacement } from "../highlights";
 import type { CroquisStreets } from "../croquis-streets";
 import { FREE_LINE_OPACITY, freeLinePixels, type FreeLine } from "../free-lines";
@@ -162,7 +162,11 @@ export function CroquisLabelEditor({
         {streets.paths.map((item, index) => (
           <path key={index} d={path(item.points)} fill="none" stroke={item.color} strokeOpacity={0.9} strokeWidth={item.weight} strokeLinecap="round" strokeLinejoin="round" />
         ))}
-        <circle cx={pin.x} cy={pin.y} r={7} className="fill-destructive stroke-background" strokeWidth={2} />
+        {/* Video 8.14: the subject's pin as the stored croquis draws it (subjectPinSvg), not a dot. */}
+        <g transform={`translate(${pin.x - 15} ${pin.y - 38})`} data-subject-pin="">
+          <path d={SUBJECT_PIN_PATH} fill={SUBJECT_PIN_COLOR} stroke="#ffffff" strokeWidth={3} />
+          <circle cx={15} cy={14} r={4} fill="#ffffff" />
+        </g>
         <text x={STATIC_MAP_SIZE.width - 4} y={STATIC_MAP_SIZE.height - 4} textAnchor="end" fontSize={9.5} className="fill-foreground">
           {OSM_CROQUIS_ATTRIBUTION}
         </text>

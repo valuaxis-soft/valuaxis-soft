@@ -11,7 +11,7 @@ import { z } from "zod";
 
 import { CROQUIS_IMAGE_IDS, CROQUIS_KINDS, type CroquisKind } from "./croquis";
 import { MAX_LABEL_PLACEMENTS, croquisLabelPlacementSchema, type CroquisLabelPlacement } from "./highlights";
-import type { CroquisFrame } from "./map-styles";
+import { isZoomStep, type CroquisFrame } from "./map-styles";
 
 export interface CroquisImageMarker {
   kind: CroquisKind;
@@ -23,7 +23,7 @@ export interface CroquisImageMarker {
 
 export const croquisMarkerSchema = z.object({
   kind: z.enum(CROQUIS_KINDS.map((item) => item.kind) as [CroquisKind, ...CroquisKind[]]),
-  frame: z.object({ offset: z.tuple([z.number().finite(), z.number().finite()]), zoom: z.number().int().min(1).max(21) }).optional(),
+  frame: z.object({ offset: z.tuple([z.number().finite(), z.number().finite()]), zoom: z.number().min(1).max(21).refine(isZoomStep) }).optional(),
   labels: z.array(croquisLabelPlacementSchema).max(MAX_LABEL_PLACEMENTS).optional(),
 });
 

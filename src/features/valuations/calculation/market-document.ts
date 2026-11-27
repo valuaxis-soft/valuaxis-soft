@@ -692,17 +692,47 @@ function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApp
   return boxes;
 }
 
-/** Photos of the comparables, for the annex. */
+/**
+ * The data a comparable's ficha prints under its photo: price, surface and
+ * observations, each only when captured.
+ */
+function fichaData(comparable: MarketCalculationDto["comparables"][number]) {
+  return [
+    comparable.price ? `Precio: ${money(comparable.price)}` : null,
+    comparable.area ? `Superficie: ${squareMetres(comparable.area)}` : null,
+    comparable.notes?.trim() ? `Observaciones: ${comparable.notes.trim()}` : null,
+  ].filter((part): part is string => part !== null);
+}
+
+/**
+ * The comparables for the annex «Croquis y fotografías de comparables», as
+ * fichas (video 8.14, 27 nov 2026: «con una foto de un comparable basta y
+ * sus datos… como una mini ficha»): one per comparable, its main photo (the
+ * first of its gallery) with its number and location above and its price,
+ * surface and observations below, laid two per row. Until then every photo
+ * of every comparable printed loose, without its data. A comparable without
+ * photos has no ficha.
+ */
 export function marketPhotoBlocks(calculation: MarketCalculationDto): Block[] {
-  const images = calculation.comparables.flatMap((comparable) =>
-    comparable.photos.map((photo) => ({
-      id: `${GENERATED_BLOCK_PREFIX}foto-${photo.id}`,
-      title: `Comparable ${comparable.reference}: ${comparable.location}`,
-      src: photo.url,
-      // «Encuadre» and «Zoom» set on the comparable's photo (video 5.5).
-      ...(photo.framing ? { framing: photo.framing } : {}),
-      enabled: true,
-    })));
+  const images = calculation.comparables.flatMap((comparable) => {
+    const photo = comparable.photos[0];
+    if (!photo) return [];
+    const data = fichaData(comparable);
+    return [
+      {
+        id: `${GENERATED_BLOCK_PREFIX}foto-${photo.id}`,
+        title: `Comparable ${comparable.reference}: ${comparable.location}`,
+        src: photo.url,
+        // «Encuadre» and «Zoom» set on the comparable's photo (video 5.5).
+        ...(photo.framing ? { framing: photo.framing } : {}),
+        captions: [
+          { id: "ficha-titulo", text: `C-${comparable.reference} · ${comparable.location}`, position: "top" as const, align: "center" as const },
+          ...(data.length ? [{ id: "ficha-datos", text: data.join(" · "), position: "bottom" as const, align: "center" as const }] : []),
+        ],
+        enabled: true,
+      },
+    ];
+  });
   if (!images.length) return [];
   const prefix = prefixFor(calculation.settings.comparableType);
   return [generatedBlock(`${prefix}-fotos`, `FOTOGRAFÍAS DE COMPARABLES: ${COMPARABLE_TYPE_LABELS[calculation.settings.comparableType].toUpperCase()}`, { images })];

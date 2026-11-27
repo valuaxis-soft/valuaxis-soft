@@ -62,6 +62,8 @@ export interface CroquisRenderInput {
   lines?: readonly FreeLine[];
   /** FAL-35: the carátula's address; its street's spelling wins over OpenStreetMap's. */
   address?: string;
+  /** Video 8.14: the subject's name in the legend; empty is «Inmueble valuado». */
+  subjectLegend?: string;
 }
 
 const NO_STREETS: CroquisStreets = { paths: [], labels: [], omitted: [] };
@@ -92,7 +94,7 @@ const noNamedStreets: NamedInFrame = async () => [];
  * free lines with a name print it too.
  */
 export async function resolveCroquisStreets(
-  input: Pick<CroquisRenderInput, "kind" | "center" | "zoom" | "subject" | "streets" | "labels" | "pins" | "northArrow" | "address" | "lines">,
+  input: Pick<CroquisRenderInput, "kind" | "center" | "zoom" | "subject" | "streets" | "labels" | "pins" | "northArrow" | "address" | "lines" | "subjectLegend">,
   streetsAround: (point: LatLon) => Promise<StreetsAroundDto> = getStreetsAround,
   namedInFrame: NamedInFrame = namedStreetsInFrame,
 ): Promise<CroquisStreets> {
@@ -105,7 +107,7 @@ export async function resolveCroquisStreets(
     found = mergedStreetWays(around.ways, inFrame);
   }
   const { ways, highlights } = withPreferredStreetNames(found, input.streets, input.address ?? "");
-  const legend = croquisLegendPlacement(input.center, input.zoom, input.pins, input.northArrow.corner, input.subject);
+  const legend = croquisLegendPlacement(input.center, input.zoom, input.pins, input.northArrow.corner, input.subject, input.subjectLegend);
   const streets = croquisStreets(input.kind, input.center, input.zoom, highlights, ways, input.subject, {
     placements: input.labels,
     pins: pinsInFrame(input.center, input.zoom, input.pins).map((pin) => pin.point),
@@ -144,7 +146,7 @@ const boxObstacle = ({ x, y, width, height }: { x: number; y: number; width: num
  * draws over it (the highlighted streets' names, the pins with their
  * numbers, the legend, the north arrow and the credit).
  */
-function baseMapObstacles(input: Pick<CroquisRenderInput, "center" | "zoom" | "pins" | "northArrow" | "subject">, streets: CroquisStreets): BaseMapObstacle[] {
+function baseMapObstacles(input: Pick<CroquisRenderInput, "center" | "zoom" | "pins" | "northArrow" | "subject" | "subjectLegend">, streets: CroquisStreets): BaseMapObstacle[] {
   const { center, zoom } = input;
   const obstacles: BaseMapObstacle[] = [boxObstacle(northArrowBox(input.northArrow.corner)), boxObstacle(attributionBox(input.northArrow.corner))];
   const pin = imagePixel(center, zoom, input.subject);
@@ -153,7 +155,7 @@ function baseMapObstacles(input: Pick<CroquisRenderInput, "center" | "zoom" | "p
     const at = imagePixel(center, zoom, comparable.point);
     obstacles.push({ x: at.x + 16, y: at.y, halfX: 30, halfY: 12 });
   }
-  const legend = croquisLegendPlacement(center, zoom, input.pins, input.northArrow.corner, input.subject);
+  const legend = croquisLegendPlacement(center, zoom, input.pins, input.northArrow.corner, input.subject, input.subjectLegend);
   if (legend) obstacles.push(boxObstacle(legend.box));
   for (const label of streets.labels) {
     const box = streetLabelBox(center, zoom, label);
@@ -176,7 +178,7 @@ function baseMapObstacles(input: Pick<CroquisRenderInput, "center" | "zoom" | "p
  */
 export async function composeCroquisImage(
   base: Buffer,
-  input: Pick<CroquisRenderInput, "center" | "zoom" | "northArrow" | "pins" | "lines"> & Partial<Pick<CroquisRenderInput, "subject">>,
+  input: Pick<CroquisRenderInput, "center" | "zoom" | "northArrow" | "pins" | "lines"> & Partial<Pick<CroquisRenderInput, "subject" | "subjectLegend">>,
   streets: CroquisStreets = NO_STREETS,
 ) {
   const image = sharp(base);
@@ -201,7 +203,7 @@ export async function composeCroquisImage(
   }
   if (input.pins.length) {
     // V7.3-09, FAL-10: what each color means, with the numbers the image shows, in the corner that hides the fewest pins; under the pins.
-    const legend = croquisLegendPlacement(input.center, input.zoom, input.pins, input.northArrow.corner, input.subject ?? input.center);
+    const legend = croquisLegendPlacement(input.center, input.zoom, input.pins, input.northArrow.corner, input.subject ?? input.center, input.subjectLegend);
     if (legend) layers.push({ input: Buffer.from(legendOverlaySvg(legend.entries, legend.corner, scale)), left: 0, top: 0 });
     const pins = Buffer.from(pinsOverlaySvg(input.center, input.zoom, input.pins, scale, input.subject));
     layers.push({ input: pins, left: 0, top: 0 });

@@ -62,7 +62,7 @@ const comparable = (extra: Partial<ComparableDto> = {}): ComparableDto => ({
 });
 const tenPhotos = Array.from({ length: 10 }, (_, index) => ({ id: `foto-${index}`, title: `Foto ${index + 1}`, url: `/api/archivos/imagen?key=f${index}` }));
 
-test("V7.1-09: the card and the annex of photos show all ten photos of a comparable", () => {
+test("V7.1-09: the card shows all ten photos of a comparable; the annex, its ficha with the main one (video 8.14)", () => {
   const card: ComparableCardDto = {
     comparable: comparable({ photos: tenPhotos }), type: "INMUEBLE_VENTA", valuation: null,
     validity: comparableValidity("2026-11-01", "2026-11-12"), warnings: [], uses: [], history: [],
@@ -71,7 +71,9 @@ test("V7.1-09: the card and the annex of photos show all ten photos of a compara
   assert.equal((html.match(/alt="Foto \d+"/g) ?? []).length, 10);
   assert.ok(html.includes("grid-cols-4"), "four a row past six");
   const blocks = marketPhotoBlocks({ settings: { comparableType: "INMUEBLE_VENTA" }, comparables: [comparable({ photos: tenPhotos })] } as never);
-  assert.equal(blocks[0]?.images?.length, 10);
+  // Video 8.14 (27 nov 2026): one photo and its data is enough in the annex, «como una mini ficha»; the first of the gallery is the main one.
+  assert.equal(blocks[0]?.images?.length, 1);
+  assert.equal(blocks[0]?.images?.[0].src, tenPhotos[0].url);
 });
 
 test("V7.1-08 and V7.2-09: the photos section is there from the first capture; the photos wait in memory and go up after saving", () => {

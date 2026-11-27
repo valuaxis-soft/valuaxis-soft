@@ -80,7 +80,7 @@ test("the overlay draws each pin where its point falls on the image, with its nu
 });
 
 test("the settings default to the demonstration's frames and read back what is valid, piece by piece", () => {
-  assert.deepEqual(DEFAULT_CROQUIS_SETTINGS, { macro: MACRO_FRAME, micro: MICRO_FRAME, comparables: COMPARABLES_FRAME, clean: true, northArrow: { style: "flecha", corner: "top-right" }, includeComparables: false, comparablesOnMap: true, streets: DEFAULT_STREET_HIGHLIGHTS, mapType: "roadmap", lines: [], labels: {} });
+  assert.deepEqual(DEFAULT_CROQUIS_SETTINGS, { macro: MACRO_FRAME, micro: MICRO_FRAME, comparables: COMPARABLES_FRAME, clean: true, northArrow: { style: "flecha", corner: "top-right" }, includeComparables: false, comparablesOnMap: true, streets: DEFAULT_STREET_HIGHLIGHTS, mapType: "roadmap", lines: [], labels: {}, markets: {}, subjectLegend: "" });
   assert.deepEqual(CROQUIS_KINDS.map((item) => item.kind), ["macro", "micro", "comparables"]);
   assert.equal(CROQUIS_KINDS[0].caption, "Croquis de macrolocalización");
   assert.deepEqual(readCroquisSettings(undefined), DEFAULT_CROQUIS_SETTINGS);

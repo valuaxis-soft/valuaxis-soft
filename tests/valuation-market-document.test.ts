@@ -264,6 +264,33 @@ test("photos go to the annex after the appraiser's own blocks", () => {
   assert.ok(withCalculation.blocks.some((block) => block.id === "motor-mercado-terreno_venta-fotos"));
 });
 
+test("video 8.14: each comparable prints as a ficha, its main photo with its number, location, price, surface and observations", () => {
+  const withData: MarketCalculationDto = {
+    ...calculation,
+    comparables: calculation.comparables.map((item, index) => ({
+      ...item,
+      notes: index === 0 ? "Esquina, frente a parque" : null,
+      photos: [
+        { id: `principal-${index}`, title: "Fachada", url: `/api/archivos/imagen?key=p${index}` },
+        { id: `otra-${index}`, title: "Interior", url: `/api/archivos/imagen?key=o${index}` },
+      ],
+    })),
+  };
+  const [block] = marketPhotoBlocks(withData);
+  assert.equal(block.images.length, withData.comparables.length, "one ficha per comparable, not one image per photo");
+  const first = block.images[0];
+  assert.equal(first.src, "/api/archivos/imagen?key=p0", "the first photo of its gallery");
+  const top = first.captions?.find((caption) => caption.position === "top")?.text ?? "";
+  const bottom = first.captions?.find((caption) => caption.position === "bottom")?.text ?? "";
+  assert.match(top, new RegExp(`^C-${withData.comparables[0].reference} · `));
+  assert.match(bottom, /Precio: \$/);
+  assert.match(bottom, /Superficie: .*m²/);
+  assert.match(bottom, /Observaciones: Esquina, frente a parque/);
+  assert.doesNotMatch(block.images[1].captions?.find((caption) => caption.position === "bottom")?.text ?? "", /Observaciones/, "only when captured");
+  // Without photos, no ficha.
+  assert.deepEqual(marketPhotoBlocks({ ...calculation, comparables: calculation.comparables.map((item) => ({ ...item, photos: [] })) }), []);
+});
+
 test("V5.5-06: the «Encuadre» and «Zoom» of a comparable's photo print in the annex, and changing them rewrites it", () => {
   const annex = section([templateBlock("croquis")]);
   const plain = withGeneratedBlocks(annex, "TERRENO_VENTA", marketPhotoBlocks(calculation), { kind: "fotos", position: "end" });

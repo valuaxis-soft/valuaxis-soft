@@ -136,6 +136,11 @@ export function CroquisGeneratorProvider({
               Ubica el inmueble, encuadra cada croquis, resalta calles y acomoda sus letreros; el croquis se guarda como imagen del avalúo, así el dictamen no
               depende de Google.
             </DialogDescription>
+            {/* Video 8.14: why the satellite view cannot be the stored croquis, said once and always. */}
+            <p className="mt-1 text-xs text-muted-foreground" data-satellite-why="">
+              La vista satélite es solo para ver en pantalla: los términos de Google no permiten guardar sus imágenes, por eso el croquis guardado es siempre el
+              mapa de OpenStreetMap.
+            </p>
           </div>
           {target && resolved && valuationId ? (
             <CroquisGeneratorBody

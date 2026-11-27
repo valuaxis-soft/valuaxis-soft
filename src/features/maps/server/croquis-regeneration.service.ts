@@ -24,7 +24,7 @@ import { keyFromStoredImageUrl } from "@/features/files/services/stored-image-ur
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { storageProvider } from "@/infrastructure/storage/storage-provider";
 
-import { includesComparables } from "../croquis";
+import { includesComparables, pinsOfMarkets } from "../croquis";
 import { readCroquisMarker, withLegacyCroquisMarker, type CroquisImageMarker } from "../croquis-marker";
 import { frameCenter } from "../map-styles";
 import { readSubjectCroquisSettings, readSubjectLocation } from "../subject-location";
@@ -163,11 +163,12 @@ export async function regenerateCroquis(options: CroquisRegenerationOptions): Pr
             zoom: frame.zoom,
             subject: location.point,
             northArrow: settings.northArrow,
-            pins: includesComparables(marker.kind, settings) ? pins : [],
+            pins: includesComparables(marker.kind, settings) ? pinsOfMarkets(pins, settings.markets[marker.kind]) : [],
             streets: settings.streets,
             labels: marker.labels ?? settings.labels[marker.kind] ?? [],
             lines: settings.lines,
             address: valuation.propiedadSujeto?.direccionesPropiedad[0]?.SDireccionCompleta ?? "",
+            subjectLegend: settings.subjectLegend,
           });
           const stored = await storageProvider.createUpload({ buffer: jpeg, filename: file.SNombreOriginal, mimeType: "image/jpeg", key, generateDownloadUrl: false });
           await prisma.archivo.update({

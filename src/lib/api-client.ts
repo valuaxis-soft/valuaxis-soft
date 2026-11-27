@@ -92,6 +92,10 @@ export type CroquisRequest = {
   labels?: CroquisLabelPlacement[];
   /** «Trazo libre»: the lines drawn by hand. */
   lines?: CroquisSettings["lines"];
+  /** Video 8.14: the markets of comparables this croquis shows; absent, all of them. */
+  markets?: CroquisSettings["markets"]["macro"];
+  /** Video 8.14: the subject's name in the legend. */
+  subjectLegend?: string;
 };
 
 /** What "Generar croquis de localización" returns: the stored image, the streets that did not fit the croquis and the comparables its frame left out («C-3»). */
