@@ -11,7 +11,6 @@ import { PasteImageButton } from "@/features/files/components/paste-image-button
 import { NOT_AN_IMAGE_MESSAGE } from "@/features/files/image-content";
 import { MAX_COMPARABLE_PHOTOS } from "@/features/valuations/calculation/market-types";
 import { addListingImages, promoteToScreenshot, type PendingImages } from "@/features/valuations/comparable-search/listing-images";
-import { ImageRightsNotice } from "../legal-notice";
 
 /**
  * The local preview of a file not uploaded yet, one per file for the life of
@@ -170,7 +169,6 @@ export function ListingImagesPicker(props: {
         </div>
       ) : null}
       {/* Matrix 1.5, «Fotografías y textos»: the listing's screenshot and photos are someone else's images. */}
-      {!props.disabled ? <ImageRightsNotice /> : null}
     </div>
   );
 }

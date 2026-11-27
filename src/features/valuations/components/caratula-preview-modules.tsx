@@ -143,12 +143,15 @@ export function CaratulaConclusionModule({
   caratula,
   meta,
   showValue = true,
+  valueTitle,
 }: {
   blocks: Block[];
   caratula: CaratulaFormData;
   meta: ValuationMeta;
   /** False on a further conclusion block: the commercial value prints once, in the first. */
   showValue?: boolean;
+  /** The title of the value's box written by hand; empty, the one of the kind of property. */
+  valueTitle?: string;
 }) {
   const narrativeConcepts = blocks
     .flatMap((block) => block.concepts)
@@ -170,7 +173,7 @@ export function CaratulaConclusionModule({
       {showValue ? (
         <div className="mt-1">
           <ConcludedValueBox
-            title={appraisedGoodWording(meta.propertyKind, meta.essence).commercialValueTitle}
+            title={valueTitle?.trim() || appraisedGoodWording(meta.propertyKind, meta.essence).commercialValueTitle}
             amount={caratula.valorTotal ? formatNumericValue(caratula.valorTotal, { valueFormat: "mxn-mn" }) : "Sin calcular"}
             words={caratula.valorConLetra || "Valor con letra pendiente"}
           />

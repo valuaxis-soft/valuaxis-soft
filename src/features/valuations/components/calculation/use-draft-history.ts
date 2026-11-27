@@ -81,6 +81,14 @@ export function focusBackAfterStep(
 }
 
 /**
+ * The panel's own buttons say whose changes they take back: two «Deshacer»,
+ * the avalúo's in the top bar and the calculation's here, confused the
+ * appraiser (video 8.7, 3:29).
+ */
+export const CALCULATION_UNDO_LABEL = "Deshacer en este cálculo";
+export const CALCULATION_REDO_LABEL = "Rehacer en este cálculo";
+
+/**
  * Undo and redo for the table of a calculation panel, which saves on its own
  * outside the document's history: Ctrl+Z and Ctrl+Y (or Ctrl+Shift+Z) in its
  * fields go back and forth through its states, and the cell changed is

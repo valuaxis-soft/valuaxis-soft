@@ -31,6 +31,14 @@ export type EditorHistoryOptions = {
   normalize?: boolean;
   /** Where the change is, when the caller knows it better than a comparison of the document would. */
   focus?: EditorFocus;
+  /**
+   * The change follows a calculation (its pages, the concluded value): not a
+   * step of the document's «Deshacer», which would take back the calculation's
+   * pages and jump to them (video 8.7, 18:17). The calculation has its own
+   * «Deshacer en este cálculo»; after an undo of the document the pages are
+   * written again from the calculations.
+   */
+  follows?: boolean;
 };
 
 /** A state the history goes back (or forward) to, and where the change that left it is. */

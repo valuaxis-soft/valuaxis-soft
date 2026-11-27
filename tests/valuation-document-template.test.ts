@@ -46,11 +46,15 @@ test("a template keeps the structure with its ids, without values, images or the
   assert.equal(template.sections[4].enabled, false, "a hidden section stays hidden");
 });
 
-test("with images the template keeps the lasting address of each image, but not the files of Datos generales; the data never, even when asked", () => {
-  const template = buildDocumentTemplate(document(), { includeData: true, includeImages: true });
+test("with images the template keeps the lasting address of each image, but not the files of Datos generales; the data only when asked", () => {
+  const template = buildDocumentTemplate(document(), { includeImages: true });
   const terreno = template.sections[2].blocks[0];
   assert.equal(terreno.concepts[0].value, "", "the property's data stay with the valuation");
   assert.equal(template.includeData, false);
+  // «Incluir datos del inmueble» (26 Nov 2026): the property's data, never the personal ones (valuation-import-bugambilias.test.ts).
+  const withData = buildDocumentTemplate(document(), { includeData: true, includeImages: true });
+  assert.equal(withData.includeData, true);
+  assert.notEqual(withData.sections[2].blocks[0].concepts[0].value, "");
   assert.deepEqual(terreno.images.map((item) => item.src), ["/api/archivos/imagen?key=uploads%2F2026-10%2Ffoto.jpg"]);
   assert.deepEqual(template.sections[1].blocks[0].images, []);
 });

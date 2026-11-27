@@ -50,10 +50,10 @@ export type AccountRestrictionEnd = "REACTIVACION" | "ACLARADA" | "ACTIVIDAD";
 export const INACTIVITY_MONTHS = 3;
 /**
  * Days between the inactivity email and disabling the account. The Terms only
- * say the account «puede» be disabled after the email; this grace is ours, to
- * confirm with the client.
+ * say the account «puede» be disabled after the email; the client asked for
+ * thirty days on 26 Nov 2026 (it was fifteen), the lawyer updates the Terms.
  */
-export const INACTIVITY_DISABLE_AFTER_NOTICE_DAYS = 15;
+export const INACTIVITY_DISABLE_AFTER_NOTICE_DAYS = 30;
 /** Business days to clarify the cause of a suspension (Terms 14.1). */
 export const CLARIFICATION_BUSINESS_DAYS = 5;
 /**
@@ -66,10 +66,12 @@ export const CLARIFICATION_BUSINESS_DAYS = 5;
  */
 export const ACCOUNT_DATA_BLOCKING_YEARS = 10;
 
-/** A concluded valuation is kept during its validity, at most twelve months from its conclusion (Terms 14.3). */
-export const RETENTION_MAX_MONTHS = 12;
-/** The email to download or back up the report goes thirty calendar days before the retention expires. */
-export const RETENTION_WARNING_DAYS = 30;
+/**
+ * A concluded valuation is never deleted; twelve months after its conclusion
+ * only the stored copies of its exports go (client, 26 Nov 2026; the lawyer
+ * updates Terms 14.3 and has to confirm it).
+ */
+const RETENTION_MAX_MONTHS = 12;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -199,27 +201,10 @@ export const inactivityDisableDue = (noticedAt: Date, now = new Date()) =>
   addDays(noticedAt, INACTIVITY_DISABLE_AFTER_NOTICE_DAYS).getTime() <= now.getTime();
 
 /**
- * When the retention of a concluded valuation expires: its validity (the
- * carátula's «vigencia»), never later than twelve months from the conclusion.
- * A validity on or before the conclusion is not a validity: the twelve months
- * apply.
+ * When the stored copies of a concluded valuation's exports (the PDFs kept at
+ * each download) may go: twelve months after its conclusion, whatever its
+ * validity. The valuation itself is never deleted (client, 26 Nov 2026).
  */
-export function retentionExpiry(input: { concludedAt: Date; validUntil: Date | null }) {
-  const cap = addMonths(input.concludedAt, RETENTION_MAX_MONTHS);
-  const { validUntil } = input;
-  if (validUntil && validUntil.getTime() > input.concludedAt.getTime() && validUntil.getTime() < cap.getTime()) return validUntil;
-  return cap;
-}
+export const exportCopiesExpiry = (concludedAt: Date) => addMonths(concludedAt, RETENTION_MAX_MONTHS);
 
-export const retentionWarningDue = (expiry: Date, now = new Date()) => addDays(expiry, -RETENTION_WARNING_DAYS).getTime() <= now.getTime();
-
-/**
- * Suppression waits for the expiry and for thirty days after the warning was
- * sent: a person always gets the thirty days the Terms promise, even when the
- * daily task was turned on late.
- */
-export function retentionSuppressionDue(expiry: Date, warnedAt: Date | null, now = new Date()) {
-  if (!warnedAt) return false;
-  const due = Math.max(expiry.getTime(), addDays(warnedAt, RETENTION_WARNING_DAYS).getTime());
-  return due <= now.getTime();
-}
+export const exportCopiesDue = (concludedAt: Date, now = new Date()) => exportCopiesExpiry(concludedAt).getTime() <= now.getTime();

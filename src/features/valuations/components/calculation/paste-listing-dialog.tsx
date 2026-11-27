@@ -16,7 +16,7 @@ import type { ComparableType } from "@/features/valuations/calculation/market-ty
 import { imageCount, NO_IMAGES, type PendingImages } from "@/features/valuations/comparable-search/listing-images";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { ListingImagesPicker } from "./listing-images-picker";
-import { AiResultReviewNotice, PasteListingReminder } from "../legal-notice";
+import { AiResultReviewNotice } from "../legal-notice";
 
 const errorMessage = (error: unknown) =>
   error instanceof SessionExpiredError ? "Tu sesión expiró. Vuelve a iniciar sesión." : error instanceof Error ? error.message : "No se pudieron leer los datos del anuncio.";
@@ -135,8 +135,6 @@ export function PasteListingDialog({
 
           {!review ? (
             <form id="paste-listing-form" className="grid gap-3" onSubmit={(event) => void extract(event)} noValidate>
-              {/* Matrix 1.5: before every send, only the listing's text goes (AI annex 2.2). */}
-              <PasteListingReminder />
               <Field>
                 <FieldLabel htmlFor="paste-listing-text">Texto del anuncio</FieldLabel>
                 <Textarea

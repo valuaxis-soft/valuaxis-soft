@@ -396,13 +396,15 @@ function CaratulaPreview({
     reportBlockFlowItems({ ...block, concepts: [], images: [], tables: [] }, true, { renderTitleBar: false, ...caratulaTitleOptions });
 
   // The blocks print in the editor's order, each with its title, like any section (videos 5.2, 5.5 and 5.6).
+  // The title of the value's box written by hand, kept with the carátula's header block (26 Nov 2026).
+  const valueTitle = section.blocks.find((block) => block.id === COMPANY_HEADER_BLOCK_ID)?.valueTitle;
   const blockItems = visibleBlocks.flatMap((block): DocumentFlowItem[] => {
     const kind = getCaratulaBlockKind(block);
     if (kind === "assumptions") {
       return [{ id: `caratula-assumptions-${block.id}`, node: <CaratulaAssumptionsModule blocks={[block]} /> }, ...apartadoItems(block)];
     }
     if (kind === "conclusion") {
-      const node = <CaratulaConclusionModule blocks={[block]} caratula={caratula} meta={meta} showValue={block.id === valueConclusionId} />;
+      const node = <CaratulaConclusionModule blocks={[block]} caratula={caratula} meta={meta} showValue={block.id === valueConclusionId} valueTitle={valueTitle} />;
       return [{ id: `caratula-conclusion-${block.id}`, node }, ...apartadoItems(block)];
     }
     // A block with nothing in it prints nothing, not even its title.
@@ -417,7 +419,7 @@ function CaratulaPreview({
     ...(unaccreditedNotice ? [{ id: "caratula-unaccredited-notice", node: <UnaccreditedNotice location="caratula" /> }] : []),
     ...blockItems,
     // With its conclusion hidden, the commercial value still prints, as it always did.
-    ...(valueConclusionId ? [] : [{ id: "caratula-conclusion", node: <CaratulaConclusionModule blocks={[]} caratula={caratula} meta={meta} /> }]),
+    ...(valueConclusionId ? [] : [{ id: "caratula-conclusion", node: <CaratulaConclusionModule blocks={[]} caratula={caratula} meta={meta} valueTitle={valueTitle} /> }]),
     // Matrix 1.7: only when the appraiser adds it in «Configuración del avalúo», right before who signs.
     ...(section.aiToolsLegend ? [{ id: "caratula-ai-tools-legend", node: <AiToolsLegend /> }] : []),
   ];

@@ -62,7 +62,7 @@ import { FormulaInput } from "./formula-input";
 import { EditorConfigPanel } from "../editor/editor-config-panel";
 import { CalculationPrecisionSummary } from "./calculation-precision-control";
 import { useSerializedSave } from "./use-serialized-save";
-import { useDraftHistory } from "./use-draft-history";
+import { CALCULATION_REDO_LABEL, CALCULATION_UNDO_LABEL, useDraftHistory } from "./use-draft-history";
 import { factorDecimals } from "@/features/valuations/calculation/calculation-precision";
 import { SaveRefusedNotice, saveRefusedMessage } from "./save-refused";
 
@@ -1015,10 +1015,10 @@ export function CostCalculationPanel(props: {
             {!readOnly ? (
               <span className="inline-flex items-center gap-1" role="group" aria-label="Deshacer y rehacer del cálculo">
                 <Button type="button" size="sm" variant="ghost" disabled={!history.canUndo} title="Deshacer el último cambio del cálculo (Ctrl+Z)" onClick={() => history.undo(draft)}>
-                  <Undo2 data-icon="inline-start" /> Deshacer
+                  <Undo2 data-icon="inline-start" /> {CALCULATION_UNDO_LABEL}
                 </Button>
                 <Button type="button" size="sm" variant="ghost" disabled={!history.canRedo} title="Rehacer (Ctrl+Y)" onClick={() => history.redo(draft)}>
-                  <Redo2 data-icon="inline-start" /> Rehacer
+                  <Redo2 data-icon="inline-start" /> {CALCULATION_REDO_LABEL}
                 </Button>
               </span>
             ) : null}

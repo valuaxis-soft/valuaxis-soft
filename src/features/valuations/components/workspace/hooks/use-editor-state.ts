@@ -130,7 +130,7 @@ export function useEditorState({
     // Formulas follow their sources: every change of the document recomputes them.
     const next = updated.sections === current.sections ? updated : { ...updated, sections: applyValuationFormulas(updated.sections) };
     if (!editorSnapshotChanged(current, next)) return;
-    pushEditorHistory(current, options);
+    if (!options?.follows) pushEditorHistory(current, options);
     applyEditorSnapshot(next);
     setSaveStatus("dirty");
   };
@@ -211,7 +211,7 @@ export function useEditorState({
     }), options);
   };
 
-  const updateCaratula = (patch: Partial<CaratulaFormData>) => {
+  const updateCaratula = (patch: Partial<CaratulaFormData>, options?: Pick<EditorHistoryOptions, "follows">) => {
     updateEditorState((current) => {
       const nextCaratula = { ...current.caratula, ...patch };
       const syncCompanyHeader =
@@ -232,7 +232,7 @@ export function useEditorState({
         caratula: nextCaratula,
         sections: datesChanged ? withHeaderDates(sections, headerDatesOf(nextCaratula)) : sections,
       };
-    }, { groupKey: textEditGroupKey("caratula", patch) });
+    }, { groupKey: textEditGroupKey("caratula", patch), ...options });
   };
 
   const updateSectionBlocks = (

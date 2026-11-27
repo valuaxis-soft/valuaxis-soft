@@ -270,8 +270,8 @@ export function ValuationTopBar({
             {...browserStateRestorationProps}
             type="button"
             className={buttonVariants({ variant: "outline", size: "icon-sm" })}
-            aria-label="Deshacer"
-            title="Deshacer"
+            aria-label="Deshacer en el avalúo"
+            title="Deshacer en el avalúo (Ctrl+Z). Los cálculos tienen su propio «Deshacer en este cálculo»."
             disabled={!canEdit || !undoAvailable}
             onClick={onUndo}
           >
@@ -282,8 +282,8 @@ export function ValuationTopBar({
             {...browserStateRestorationProps}
             type="button"
             className={buttonVariants({ variant: "outline", size: "icon-sm" })}
-            aria-label="Rehacer"
-            title="Rehacer"
+            aria-label="Rehacer en el avalúo"
+            title="Rehacer en el avalúo (Ctrl+Y)"
             disabled={!canEdit || !redoAvailable}
             onClick={onRedo}
           >

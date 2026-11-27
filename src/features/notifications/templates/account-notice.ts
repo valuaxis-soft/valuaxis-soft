@@ -17,7 +17,6 @@ export const ACCOUNT_NOTICE_KINDS = [
   "SUSPENSION_AVISO",
   "SUSPENSION",
   "REACTIVACION",
-  "GUARDA_POR_VENCER",
 ] as const;
 
 type Common = {
@@ -43,8 +42,7 @@ export type AccountNoticeInput =
       deadline: Date | null;
       blocksAccess: boolean;
     })
-  | (Common & { kind: "REACTIVACION"; reactivatedAt: Date })
-  | (Common & { kind: "GUARDA_POR_VENCER"; folio: string; concludedAt: Date; expiresAt: Date; valuationUrl: string });
+  | (Common & { kind: "REACTIVACION"; reactivatedAt: Date });
 
 export type AccountNoticeContent = { subject: string; text: string; html: string };
 
@@ -136,16 +134,6 @@ function paragraphs(input: AccountNoticeInput): { subject: string; body: string[
           `Reactivamos tu cuenta ${input.email} el ${dayAndTime(input.reactivatedAt)}. Ya puedes entrar, elaborar y concluir avalúos.`,
           "Tu saldo de Avalúos Disponibles se conservó intacto.",
           `Entra aquí: ${input.appUrl}/iniciar-sesion`,
-        ],
-      };
-    case "GUARDA_POR_VENCER":
-      return {
-        subject: `Descarga o respalda el reporte del avalúo ${input.folio}: su guarda vence el ${day(input.expiresAt)} · Valuaxis Soft`,
-        body: [
-          hello,
-          `El avalúo ${input.folio}, concluido el ${day(input.concludedAt)}, se conserva en Valuaxis Soft durante su vigencia, que no excede de doce meses desde su conclusión. Su plazo de guarda vence el ${day(input.expiresAt)}.`,
-          "Descarga o respalda su reporte antes de esa fecha: vencido el plazo, el avalúo se suprime de la Plataforma con sus datos de terceros y de anunciantes (Términos y condiciones de uso, sección 14.3; Aviso de privacidad integral, sección 8.3). El resguardo del reporte que debas conservar por tus propias obligaciones profesionales corre a tu cargo.",
-          `Ábrelo aquí: ${input.valuationUrl}`,
         ],
       };
   }

@@ -59,7 +59,7 @@ De cada uso se registra en auditoría (`EXPORTACION`, acciones `AI_LISTING_EXTRA
 
 ## Avisos en pantalla (matriz de We Law, 25 nov 2026)
 
-- **Pegar anuncio:** antes del cuadro, el recordatorio de pegar solo el texto del anuncio, sin datos del solicitante, del propietario ni de otras personas (texto propuesto, pendiente de redacción de We Law); junto al resultado, el aviso literal de la matriz 1.5: «Los datos que propone esta función pueden contener errores. Revíselos y corríjalos antes de guardarlos; usted responde de los datos que usa en su avalúo.» Lo propuesto no se guarda hasta «Guardar comparable».
+- **Pegar anuncio:** sin recordatorio antes del cuadro: desde el 26 nov 2026 (decisión del cliente con el abogado) lo que el valuador declara sobre lo que pega va una sola vez en los Términos que acepta al registrarse. Junto al resultado, el aviso literal de la matriz 1.5: «Los datos que propone esta función pueden contener errores. Revíselos y corríjalos antes de guardarlos; usted responde de los datos que usa en su avalúo.» Lo propuesto no se guarda hasta «Guardar comparable».
 - **Buscar con IA:** el mismo aviso junto a la lista de anuncios encontrados. No cambia lo que hace la búsqueda.
 - Los textos están en `src/features/valuations/legal-notices.ts`; el detalle, en [COMPARABLES.md](COMPARABLES.md#avisos-y-datos-del-anunciante-matriz-de-we-law-25-nov-2026).
 - **Registro de uso (matriz 3.3):** cada uso queda en la auditoría con quién, cuándo, desde qué IP, el avalúo, el modelo y los tokens (el consumo); el costo en pesos se calcula con la tabla de «Costo por uso», no se guarda por registro.

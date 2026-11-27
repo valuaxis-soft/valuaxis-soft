@@ -14,9 +14,8 @@ import {
   inactivityDue,
   isMexicanHoliday,
   lastActivity,
-  retentionExpiry,
-  retentionSuppressionDue,
-  retentionWarningDue,
+  exportCopiesDue,
+  exportCopiesExpiry,
   suspendedMessage,
   type AccountRestriction,
 } from "../src/features/account/standing/account-standing-rules";
@@ -84,27 +83,13 @@ test("inactivity: three months from the last valuation, sign-up or reactivation;
   assert.equal(inactivityDue(activity, at("2026-09-30T23:59:59Z")), false);
   assert.equal(inactivityDue(activity, at("2026-10-01T00:00:00Z")), true);
   assert.equal(lastActivity({ accountCreatedAt: at("2026-01-10T00:00:00Z"), lastValuationCreatedAt: null, lastReactivatedAt: null }).toISOString(), "2026-01-10T00:00:00.000Z");
-  assert.equal(inactivityDisableDue(at("2026-10-01T00:00:00Z"), at("2026-10-15T23:00:00Z")), false);
-  assert.equal(inactivityDisableDue(at("2026-10-01T00:00:00Z"), at("2026-10-16T00:00:00Z")), true);
+  assert.equal(inactivityDisableDue(at("2026-10-01T00:00:00Z"), at("2026-10-30T23:00:00Z")), false);
+  assert.equal(inactivityDisableDue(at("2026-10-01T00:00:00Z"), at("2026-10-31T00:00:00Z")), true);
 });
 
-test("retention: the validity, never more than twelve months from the conclusion", () => {
+test("retention: the stored export copies go twelve months after the conclusion, whatever the validity", () => {
   const concludedAt = at("2026-01-15T18:00:00Z");
-  assert.equal(retentionExpiry({ concludedAt, validUntil: null }).toISOString(), "2027-01-15T18:00:00.000Z");
-  assert.equal(retentionExpiry({ concludedAt, validUntil: at("2026-07-15T06:00:00Z") }).toISOString(), "2026-07-15T06:00:00.000Z");
-  // A validity beyond twelve months, or before the conclusion, is not used.
-  assert.equal(retentionExpiry({ concludedAt, validUntil: at("2027-06-01T00:00:00Z") }).toISOString(), "2027-01-15T18:00:00.000Z");
-  assert.equal(retentionExpiry({ concludedAt, validUntil: at("2026-01-01T00:00:00Z") }).toISOString(), "2027-01-15T18:00:00.000Z");
-});
-
-test("retention: the email thirty days before, the suppression at the expiry and never less than thirty days after the email", () => {
-  const expiry = at("2027-01-15T18:00:00Z");
-  assert.equal(retentionWarningDue(expiry, at("2026-12-16T17:59:59Z")), false);
-  assert.equal(retentionWarningDue(expiry, at("2026-12-16T18:00:00Z")), true);
-  assert.equal(retentionSuppressionDue(expiry, null, at("2028-01-01T00:00:00Z")), false, "never without the email");
-  assert.equal(retentionSuppressionDue(expiry, at("2026-12-16T18:00:00Z"), at("2027-01-15T17:59:59Z")), false);
-  assert.equal(retentionSuppressionDue(expiry, at("2026-12-16T18:00:00Z"), at("2027-01-15T18:00:00Z")), true);
-  // The daily task turned on late: the email goes out after the expiry, the thirty days still run.
-  assert.equal(retentionSuppressionDue(expiry, at("2027-03-01T00:00:00Z"), at("2027-03-30T00:00:00Z")), false);
-  assert.equal(retentionSuppressionDue(expiry, at("2027-03-01T00:00:00Z"), at("2027-03-31T00:00:00Z")), true);
+  assert.equal(exportCopiesExpiry(concludedAt).toISOString(), "2027-01-15T18:00:00.000Z");
+  assert.equal(exportCopiesDue(concludedAt, at("2027-01-15T17:59:59Z")), false);
+  assert.equal(exportCopiesDue(concludedAt, at("2027-01-15T18:00:00Z")), true);
 });

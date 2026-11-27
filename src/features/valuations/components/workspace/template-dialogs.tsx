@@ -100,6 +100,7 @@ export function SaveAsTemplateDialog({
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [includeImages, setIncludeImages] = useState(false);
+  const [includeData, setIncludeData] = useState(false);
   const [pending, setPending] = useState(false);
   /** The name is already one of the firm's templates: replace it or write another. */
   const [nameTaken, setNameTaken] = useState(false);
@@ -109,6 +110,7 @@ export function SaveAsTemplateDialog({
       setName("");
       setDescription("");
       setIncludeImages(false);
+      setIncludeData(false);
       setNameTaken(false);
     }
   };
@@ -122,8 +124,8 @@ export function SaveAsTemplateDialog({
         // Left empty, a replacement keeps the template's description.
         description: description.trim() || undefined,
         valuationId,
-        // The client's data never go into a template: only the structure, the formats and the appraiser's texts.
-        includeData: false,
+        // Off, only the structure, the formats and the appraiser's texts; on, the property's data too, never the personal ones.
+        includeData,
         includeImages,
         replace,
       });
@@ -145,8 +147,8 @@ export function SaveAsTemplateDialog({
           <DialogTitle>Guardar como plantilla</DialogTitle>
           <DialogDescription>
             Guarda las secciones, bloques y subbloques de este avalúo, con los títulos, tipos y formatos de sus conceptos, los
-            encabezados y fórmulas de sus tablas y los textos de Consideraciones. Los datos del cliente y del inmueble no se
-            guardan; lo que escribe el cálculo tampoco.
+            encabezados y fórmulas de sus tablas y los textos de Consideraciones. Los datos del inmueble se guardan solo si los
+            incluyes; los nombres de personas, teléfonos y correos nunca, y lo que escribe el cálculo tampoco.
           </DialogDescription>
         </DialogHeader>
         <form
@@ -190,7 +192,16 @@ export function SaveAsTemplateDialog({
           </Field>
           {/* A line sets the options apart from what the template is called. */}
           <div className="border-t pt-4" data-template-options="">
-            <OptionCheckbox id="template-include-images" checked={includeImages} onChange={setIncludeImages} label="Incluir imágenes" description="La imagen principal de la carátula y las imágenes de los bloques (no las fotografías de Datos generales, que son del avalúo)." />
+            <div className="grid gap-3">
+              <OptionCheckbox
+                id="template-include-data"
+                checked={includeData}
+                onChange={setIncludeData}
+                label="Incluir datos del inmueble"
+                description="Todos los textos y valores (ubicación, uso de suelo, colindancias, características y tablas), para traerlos con «Importar» › «Incluir datos». Sin nombres de personas, teléfonos ni correos. Un avalúo nuevo hecho con la plantilla no los toma."
+              />
+              <OptionCheckbox id="template-include-images" checked={includeImages} onChange={setIncludeImages} label="Incluir imágenes" description="La imagen principal de la carátula y las imágenes de los bloques (no las fotografías de Datos generales, que son del avalúo)." />
+            </div>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" disabled={pending} onClick={() => close(false)}>Cancelar</Button>
@@ -209,19 +220,27 @@ type SourceOption = { id: string; label: string; detail: string };
 
 /**
  * What «Incluir datos» and «Incluir datos y autovincular» bring, by source.
- * A template keeps no data of the client or the property (`stripClientData`),
- * only the appraiser's texts: the dialog does not promise values it lacks.
+ * Another valuation, or a template saved «con datos del inmueble», brings
+ * every text and value but the personal data (names of people, phones,
+ * emails); a template saved without them keeps only the appraiser's texts:
+ * the dialog does not promise values it lacks.
  */
-export function importDataOptionTexts(kind: SourceKind): { includeData: string; autoLink: string } {
+export function importDataOptionTexts(kind: SourceKind, templateHasData = false): { includeData: string; autoLink: string } {
   const link = "Cada concepto que se llame igual que uno de este avalúo que ya tiene dato (por ejemplo «Solicitante» de la carátula) queda vinculado a él y muestra ese dato.";
+  if (kind === "template" && templateHasData) {
+    return {
+      includeData: "Todos los textos y valores que guardó la plantilla (ubicación, uso de suelo, colindancias, características y tablas), sin nombres de personas, teléfonos ni correos.",
+      autoLink: `${link} Los demás traen el valor de la plantilla. Al terminar te decimos cuántos se vincularon.`,
+    };
+  }
   if (kind === "template") {
     return {
-      includeData: "Las plantillas no guardan datos del cliente ni del inmueble: solo traen los textos del valuador (Consideraciones, textos largos y párrafos). Sin esta opción llegan vacíos.",
+      includeData: "Esta plantilla se guardó sin datos del inmueble: solo trae los textos del valuador (Consideraciones, textos largos y párrafos). Para traer todos los datos, impórtalos «De otro avalúo» o guarda la plantilla con «Incluir datos del inmueble».",
       autoLink: `${link} Como la plantilla no trae datos del cliente, los demás conceptos llegan vacíos para capturarlos. Al terminar te decimos cuántos se vincularon.`,
     };
   }
   return {
-    includeData: "Los valores capturados y el contenido de las tablas, como están en el avalúo de origen.",
+    includeData: "Todos los textos y valores capturados (ubicación, uso de suelo, colindancias, características) y el contenido de las tablas, como están en el avalúo de origen, sin nombres de personas, teléfonos ni correos.",
     autoLink: `${link} Los demás traen el valor del avalúo de origen. Al terminar te decimos cuántos se vincularon.`,
   };
 }
@@ -288,6 +307,8 @@ export function ImportBlockButton({ section }: { section: AppSection }) {
   const [sources, setSources] = useState<SourceOption[] | null>(null);
   const [sourceId, setSourceId] = useState<string | null>(null);
   const [sourceSections, setSourceSections] = useState<AppSection[] | null>(null);
+  /** The template chosen was saved «con datos del inmueble». */
+  const [templateHasData, setTemplateHasData] = useState(false);
   const [selection, setSelection] = useState<ImportSelection>(EMPTY_SELECTION);
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const [includeData, setIncludeData] = useState(false);
@@ -295,7 +316,8 @@ export function ImportBlockButton({ section }: { section: AppSection }) {
   const [includeImages, setIncludeImages] = useState(false);
   const [asking, setAsking] = useState(false);
   const [loading, setLoading] = useState(false);
-  if (!transfer || transfer.readOnly || section.id === "caratula") return null;
+  // The carátula imports too (video 8.5, 0:12): what it takes, concepts and subbloques.
+  if (!transfer || transfer.readOnly) return null;
 
   const resetChoice = () => {
     setSelection(EMPTY_SELECTION);
@@ -331,9 +353,14 @@ export function ImportBlockButton({ section }: { section: AppSection }) {
     resetChoice();
     setLoading(true);
     try {
-      setSourceSections(kind === "template"
-        ? (await api.templates.get(id)).content.sections
-        : initialSectionsFor(await api.templates.valuation(id)));
+      if (kind === "template") {
+        const template = await api.templates.get(id);
+        setTemplateHasData(template.content.includeData);
+        setSourceSections(template.content.sections);
+      } else {
+        setTemplateHasData(false);
+        setSourceSections(initialSectionsFor(await api.templates.valuation(id)));
+      }
     } catch (error) {
       toast.error(`No se pudo abrir: ${errorText(error)}`);
     } finally {
@@ -354,7 +381,7 @@ export function ImportBlockButton({ section }: { section: AppSection }) {
     }
   };
 
-  const tree = sourceSections ? importTree(sourceSections) : [];
+  const tree = sourceSections ? importTree(sourceSections, section) : [];
   const plan = planImport(tree, selection, transfer.sections);
   const chosen = plannedBlockCount(plan) > 0;
   const toggle = (leaves: string[], checked: boolean, wholeSection?: string) =>
@@ -367,7 +394,8 @@ export function ImportBlockButton({ section }: { section: AppSection }) {
       return next;
     });
   const runImport = (conflict?: "append" | "replace") => {
-    if (transfer.importStructure(section.id, plan, { includeData: includeData || autoLink, includeImages, autoLink, conflict })) close(false);
+    // Names of people, phones and emails never come with the data (video 8.5, 1:16).
+    if (transfer.importStructure(section.id, plan, { includeData: includeData || autoLink, includeImages, autoLink, conflict, withoutPersonalData: true })) close(false);
   };
   const conflicts = plan.sections.filter((item) => item.destinationHasContent);
 
@@ -523,7 +551,7 @@ export function ImportBlockButton({ section }: { section: AppSection }) {
                 if (!next) setAutoLink(false);
               }}
               label="Incluir datos"
-              description={importDataOptionTexts(kind).includeData}
+              description={importDataOptionTexts(kind, templateHasData).includeData}
             />
             <OptionCheckbox
               id="import-auto-link"
@@ -533,7 +561,7 @@ export function ImportBlockButton({ section }: { section: AppSection }) {
                 if (next) setIncludeData(true);
               }}
               label="Incluir datos y autovincular"
-              description={importDataOptionTexts(kind).autoLink}
+              description={importDataOptionTexts(kind, templateHasData).autoLink}
             />
             <OptionCheckbox id="import-include-images" checked={includeImages} onChange={setIncludeImages} label="Incluir imágenes" />
           </div>

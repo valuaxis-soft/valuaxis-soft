@@ -100,7 +100,7 @@ import { MarketOfferLevel } from "./market-offer-level";
 import { PasteListingDialog } from "./paste-listing-dialog";
 import { SearchComparablesDialog } from "./search-comparables-dialog";
 import type { GoogleMapsPageConfig } from "@/features/maps/components/location-panel";
-import { useDraftHistory } from "./use-draft-history";
+import { CALCULATION_REDO_LABEL, CALCULATION_UNDO_LABEL, useDraftHistory } from "./use-draft-history";
 import { useNumberPresentation } from "@/features/valuations/components/number-presentation-context";
 import { useConfirmDelete } from "@/features/valuations/components/editor/delete-confirm";
 
@@ -828,10 +828,10 @@ function MarketTypePanel(props: {
           {!readOnly ? (
             <span className="ml-auto inline-flex items-center gap-1" role="group" aria-label="Deshacer y rehacer del cálculo">
               <Button type="button" size="sm" variant="ghost" disabled={!history.canUndo} title="Deshacer el último cambio del cálculo (Ctrl+Z)" onClick={() => { const current = snapshot(); if (current) history.undo(current); }}>
-                <Undo2 data-icon="inline-start" /> Deshacer
+                <Undo2 data-icon="inline-start" /> {CALCULATION_UNDO_LABEL}
               </Button>
               <Button type="button" size="sm" variant="ghost" disabled={!history.canRedo} title="Rehacer (Ctrl+Y)" onClick={() => { const current = snapshot(); if (current) history.redo(current); }}>
-                <Redo2 data-icon="inline-start" /> Rehacer
+                <Redo2 data-icon="inline-start" /> {CALCULATION_REDO_LABEL}
               </Button>
               {props.onRemoveMarket ? (
                 <Button type="button" size="sm" variant="ghost" className="text-destructive" onClick={() => props.onRemoveMarket?.(type, calculation)}>

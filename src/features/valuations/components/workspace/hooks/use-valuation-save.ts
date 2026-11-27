@@ -1,8 +1,9 @@
-import { useEffect, useEffectEvent, useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 
 import { api, SessionExpiredError } from "@/lib/api-client";
+import { pendingMutations, pendingMutationsSettled, subscribePendingMutations } from "@/lib/pending-mutations";
 import { updateCompanyHeaderFields } from "@/features/valuations/services/caratula-company-header";
 import { hasUntitledConcepts } from "@/features/valuations/services/caratula-blocks";
 import {
@@ -12,7 +13,7 @@ import {
   validateCaratula,
 } from "@/features/valuations/services/caratula-validation";
 import { buildSectionsPayload, valuationMetaPayload } from "../model/save-payload";
-import { leavingLinkHref, type PendingExit } from "../model/navigation-guard";
+import { leavingLinkHref, setLeaveGuard, type PendingExit } from "../model/navigation-guard";
 import { errorCodeOf, isSaveShortcut, shouldAutosave, statusAfterSave } from "../model/save-status";
 import type { EditorState } from "./use-editor-state";
 import type { AppSection } from "@/features/valuations/model";
@@ -78,16 +79,20 @@ export function useValuationSave({
 
   const saving = saveStatus === "saving";
   const hasUnsavedChanges = saveStatus === "dirty" || saveStatus === "error";
+  // A calculation panel saving on its own (a comparable, a factor) still on its way: leaving now would lose it.
+  const panelSaving = useSyncExternalStore(subscribePendingMutations, pendingMutations, () => 0) > 0;
+  /** Leaving now loses work: the editor asks first, wherever the appraiser goes. */
+  const mustAskBeforeLeaving = hasUnsavedChanges || panelSaving;
 
   // Closing or reloading the tab with unsaved changes asks for confirmation.
   useEffect(() => {
-    if (!hasUnsavedChanges) return;
+    if (!mustAskBeforeLeaving) return;
     const onBeforeUnload = (event: BeforeUnloadEvent) => {
       event.preventDefault();
     };
     window.addEventListener("beforeunload", onBeforeUnload);
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
-  }, [hasUnsavedChanges]);
+  }, [mustAskBeforeLeaving]);
 
   // The browser's (or the installed app's) Atrás is a client navigation that beforeunload does not see: it
   // went back to the dashboard and the changes were lost (video 6.2, 05:44). With changes pending the editor
@@ -96,13 +101,13 @@ export function useValuationSave({
   const historyGuardRef = useRef(false);
   const leavingRef = useRef(false);
   useEffect(() => {
-    if (!hasUnsavedChanges || historyGuardRef.current) return;
+    if (!mustAskBeforeLeaving || historyGuardRef.current) return;
     window.history.pushState(window.history.state, "", window.location.href);
     historyGuardRef.current = true;
-  }, [hasUnsavedChanges]);
+  }, [mustAskBeforeLeaving]);
   const onHistoryBack = useEffectEvent(() => {
     if (!historyGuardRef.current || leavingRef.current) return;
-    if (!hasUnsavedChanges) {
+    if (!mustAskBeforeLeaving) {
       historyGuardRef.current = false;
       window.history.back();
       return;
@@ -119,7 +124,7 @@ export function useValuationSave({
 
   // A link of the app (a menu, a toast, a page linked from the editor) asks the same, before the router sees the click.
   const onDocumentClick = useEffectEvent((event: MouseEvent) => {
-    if (!hasUnsavedChanges || leavingRef.current) return;
+    if (!mustAskBeforeLeaving || leavingRef.current) return;
     const anchor = event.target instanceof Element ? event.target.closest<HTMLAnchorElement>("a[href]") : null;
     const href = leavingLinkHref(event, anchor, window.location);
     if (!href) return;
@@ -249,8 +254,16 @@ export function useValuationSave({
     else router.push(exit.href);
   };
 
+  // A page of the app that navigates from code (the command palette) asks the editor first, as a link does.
+  const onLeaveRequest = useEffectEvent((href: string) => {
+    if (!mustAskBeforeLeaving || leavingRef.current) return false;
+    setPendingExit({ kind: "push", href });
+    return true;
+  });
+  useEffect(() => setLeaveGuard((href) => onLeaveRequest(href)), []);
+
   const handleExit = () => {
-    if (hasUnsavedChanges) {
+    if (mustAskBeforeLeaving) {
       setPendingExit({ kind: "push", href: exitHref });
       return;
     }
@@ -259,7 +272,9 @@ export function useValuationSave({
 
   const handleSaveAndExit = async () => {
     const exit = pendingExit;
-    const ok = await handleSave();
+    const ok = !hasUnsavedChanges || (await handleSave());
+    // What the calculation panels were still saving arrives before leaving.
+    await pendingMutationsSettled();
     if (ok && exit) leave(exit);
   };
 

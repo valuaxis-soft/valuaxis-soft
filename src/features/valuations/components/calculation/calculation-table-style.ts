@@ -29,7 +29,13 @@ export const CALC_HEAD = "bg-[var(--doc-pastel,#BDD7EE)] text-[color:var(--doc-o
 export const CALC_HEAD_CELL = "border-2 border-white px-1.5 py-1 text-center align-middle font-bold dark:border-border";
 
 /** A row: gray and white alternate, the first one gray. */
-export const CALC_ROW = "border-t border-[#DCE4EE] odd:bg-slate-100 dark:border-border dark:odd:bg-muted/40";
+export const CALC_ROW = "border-t border-[#DCE4EE] odd:bg-[var(--doc-zebra,#F1F5F9)] dark:border-border dark:odd:bg-muted/40";
+
+/** A shaded row of a table of the editor: the palette's tint, as the dictamen prints it (video 8.12, 26:35). */
+export const EDITOR_ZEBRA_ROW = "bg-[var(--doc-zebra,#F1F5F9)]";
+
+/** A row the table names as shaded (the «calificación» of the rate table): the stronger tint. */
+export const EDITOR_SHADED_ROW = "bg-[var(--doc-zebra-strong,#E2E8F0)]";
 
 /** A body cell with a rule on each side, so the columns read apart (video 5.4). */
 export const CALC_CELL = "border-x border-[#DCE4EE] dark:border-border";

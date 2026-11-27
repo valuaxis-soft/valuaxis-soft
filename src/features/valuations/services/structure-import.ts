@@ -42,9 +42,26 @@ export type ImportTreeBlock = {
 
 export type ImportTreeSection = { section: AppSection; title: string; blocks: ImportTreeBlock[] };
 
-/** The sections of the source with the Blocks that can be imported, in order. */
-export function importTree(sections: AppSection[]): ImportTreeSection[] {
-  const importable = importableBlocks(sections);
+/**
+ * The Blocks of the source's carátula that can be imported: all but its fixed
+ * header (video 8.5, 0:12: «en carátula no me permite importar un bloque»).
+ */
+function caratulaBlocks(sections: AppSection[]) {
+  const caratula = sections.find((section) => section.id === "caratula");
+  if (!caratula) return [];
+  return caratula.blocks
+    .filter((block) => !isGeneratedBlock(block) && structureLockReason(caratula, block.id) === null)
+    .map((block) => ({ sectionId: caratula.id, block }));
+}
+
+/**
+ * The sections of the source with the Blocks that can be imported, in order.
+ * `into`: the section of this valuation the import is opened from; into the
+ * carátula only what it takes (concepts and subbloques, no tables or images).
+ */
+export function importTree(sections: AppSection[], into?: Pick<AppSection, "id">): ImportTreeSection[] {
+  const fits = (block: Block) => into?.id !== "caratula" || ![block, ...block.apartados].some((container) => container.tables.length > 0 || container.images.length > 0);
+  const importable = [...caratulaBlocks(sections), ...importableBlocks(sections)].filter((item) => fits(item.block));
   return sections.flatMap((section) => {
     const blocks = importable
       .filter((item) => item.sectionId === section.id)
@@ -151,8 +168,9 @@ function chosenPart(block: ImportTreeBlock, leaves: ReadonlySet<string>): Block 
 const normalizedTitle = (title: string) =>
   title.normalize("NFD").replace(/\p{M}/gu, "").toLowerCase().replace(/\s+/g, " ").trim();
 
-/** The section of this valuation a whole section goes to: the same one, or one titled the same; never the carátula. */
+/** The section of this valuation a whole section goes to: the same one, or one titled the same; the carátula only from a carátula. */
 export function destinationSectionFor(destination: AppSection[], source: Pick<AppSection, "id" | "title" | "label">): AppSection | null {
+  if (source.id === "caratula") return destination.find((section) => section.id === "caratula") ?? null;
   const candidates = destination.filter((section) => section.id !== "caratula" && !section.removed);
   const sameId = candidates.find((section) => section.id === source.id);
   if (sameId) return sameId;
@@ -272,7 +290,7 @@ function newSectionFrom(source: AppSection): AppSection {
  */
 export function importStructure(sections: AppSection[], currentSectionId: string, plan: ImportPlan, options: ImportOptions = {}): ImportResult {
   if (plannedBlockCount(plan) === 0) return { changed: false, sections, reason: "Elige al menos un bloque, subbloque o sección." };
-  const copyOptions: CopyOptions = { includeData: options.includeData, includeImages: options.includeImages };
+  const copyOptions: CopyOptions = { includeData: options.includeData, includeImages: options.includeImages, withoutPersonalData: options.withoutPersonalData };
   const before = allConceptIds(sections);
   let next = sections;
   let focusSectionId: string | undefined;

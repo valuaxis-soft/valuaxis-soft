@@ -48,6 +48,7 @@ import { Trace } from "@/features/valuations/engine/trace";
 import type { AppSection } from "@/features/valuations/model";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
 import { REPORT_APPROACHES, excludedReportApproaches } from "@/features/valuations/services/report-approaches";
+import { comparablesChanged } from "../model/save-status";
 import { useConstructionCapture } from "./use-construction-capture";
 import type { EditorState } from "./use-editor-state";
 
@@ -68,11 +69,12 @@ export function useCalculationDocumentSync({
   machinery,
   saveStatus,
   sections,
+  setSaveStatus,
   updateCaratula,
   updateSections,
   vehicle = false,
   valuationId,
-}: Pick<EditorState, "caratula" | "saveStatus" | "sections" | "updateCaratula" | "updateSections"> & {
+}: Pick<EditorState, "caratula" | "saveStatus" | "sections" | "updateCaratula" | "updateSections"> & Partial<Pick<EditorState, "setSaveStatus">> & {
   canEdit: boolean;
   /** The valuation is of machinery and equipment. */
   machinery: boolean;
@@ -89,7 +91,7 @@ export function useCalculationDocumentSync({
         return updated;
       });
       return changed ? next : current;
-    }, { groupKey });
+    }, { groupKey, follows: true });
   };
 
   // The construction types and the installations are captured in their tables of the construction section.
@@ -134,6 +136,8 @@ export function useCalculationDocumentSync({
         : key === "CROQUIS_COMPARABLES"
           ? withGeneratedBlocks(section, type, photoBlocks, { kind: "fotos", position: "end" })
           : section);
+    // A comparable added or deleted is a change of the valuation even when the pages read the same yet.
+    if (comparablesChanged(marketsByType.current.get(type), calculation)) setSaveStatus?.("dirty");
     marketsByType.current.set(type, calculation);
     marketResults.current.set(type, result);
     if (annex) applyFactorAnnex();
@@ -219,7 +223,7 @@ export function useCalculationDocumentSync({
           : section);
     const total = String(result.value);
     if (caratula.valorTotal.replace(/[$,\s]/g, "") !== total || caratula.valorConLetra !== result.valueInWords) {
-      updateCaratula({ valorTotal: total, valorConLetra: result.valueInWords });
+      updateCaratula({ valorTotal: total, valorConLetra: result.valueInWords }, { follows: true });
     }
   };
 

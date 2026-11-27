@@ -4,12 +4,18 @@
  * types, tables with their headers and formulas, and, when chosen, the
  * images.
  *
- * The client's and the property's data never go into a template (2 Nov
- * 2026: "Departamentos Jalisco" carried a real client): every captured value
- * is left blank except the appraiser's own texts, which are the template's
- * wording — the whole Consideraciones section and the long texts and
- * paragraphs anywhere (declarations, observations). Formats, units, labels
- * and formulas stay.
+ * By default the client's and the property's data do not go into a template
+ * (2 Nov 2026: "Departamentos Jalisco" carried a real client): every
+ * captured value is left blank except the appraiser's own texts, which are
+ * the template's wording — the whole Consideraciones section and the long
+ * texts and paragraphs anywhere (declarations, observations). Formats, units,
+ * labels and formulas stay.
+ *
+ * «Incluir datos del inmueble» (26 Nov 2026, video 8.5, 1:16: a template
+ * saved from a valuation to import its blocks «con todo y datos») keeps every
+ * value and table but the personal data: names of people, phones and emails
+ * (personal-data.ts). A new valuation made from a template never takes its
+ * data (`stripClientDataFromSections`); only «Importar» brings them.
  *
  * What the calculation writes is never kept: its Blocks come back from the
  * calculation of each valuation. Images of Datos generales are files of the
@@ -56,7 +62,7 @@ function readCoverImage(value: unknown): TemplateCoverImage | undefined {
   return isRecord(value) && typeof value.fileId === "string" && UUID.test(value.fileId) ? { fileId: value.fileId } : undefined;
 }
 
-/** `includeData` is accepted for the API's sake but no longer keeps the client's data: see `stripClientData`. */
+/** `includeData`: keep the property's data, without the personal ones (see the module). */
 export type TemplateOptions = Required<Pick<CopyOptions, "includeImages">> & Pick<CopyOptions, "includeData">;
 
 /** The section whose captured texts are the template's wording: the appraiser's considerations. */
@@ -113,7 +119,10 @@ export function templateContainsData(sections: ReadonlyArray<Pick<AppSection, "i
 }
 
 function templateBlock(section: AppSection, block: Block, options: TemplateOptions): Block {
-  const kept = stripClientData(section, block, options);
+  const includeImages = Boolean(options.includeImages) && !isRelationManagedImageSection(section.id);
+  const kept = options.includeData
+    ? blockWithoutData(block, { includeData: true, includeImages, withoutPersonalData: true })
+    : stripClientData(section, block, options);
   // The template keeps the address of a stored image that does not expire, not a signed one that does.
   const durable = <T extends { images: Block["images"] }>(container: T): T => ({
     ...container,
@@ -122,11 +131,11 @@ function templateBlock(section: AppSection, block: Block, options: TemplateOptio
   return { ...durable(kept), apartados: kept.apartados.map(durable) };
 }
 
-/** The template of a valuation's document, without the client's data whatever the options say. */
+/** The template of a valuation's document: without the client's data, or with the property's but no personal data. */
 export function buildDocumentTemplate(sections: AppSection[], options: TemplateOptions): DocumentTemplateContent {
   return {
     format: DOCUMENT_TEMPLATE_FORMAT,
-    includeData: false,
+    includeData: options.includeData === true,
     includeImages: options.includeImages,
     sections: sections.map((section) => ({
       ...section,

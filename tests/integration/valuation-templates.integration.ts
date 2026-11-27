@@ -184,7 +184,8 @@ test("saving under a taken name is refused unless replaced: a new version, read 
   assert.equal(second.id, original.id, "the same template");
   assert.equal(second.name, "Departamento", "the name stays as it was");
   assert.equal(second.version, 2);
-  assert.equal(second.includeData, false, "a template never keeps the client's data, even when asked");
+  // «Incluir datos del inmueble» (26 Nov 2026): kept when asked, never the personal data; a new valuation still starts without them.
+  assert.equal(second.includeData, true);
   assert.equal(second.description, "Para departamentos en condominio", "a replacement without a description keeps it");
   assert.equal(second.createdBy, "Perito");
 
@@ -200,7 +201,7 @@ test("saving under a taken name is refused unless replaced: a new version, read 
   // "Importar bloque" and a new valuation read the latest version.
   const read = await call(jar, getTemplate, "GET", `/api/plantillas/${original.id}`, undefined, original.id);
   const content = (read.body!.data as { content: DocumentTemplateContent }).content;
-  assert.deepEqual(content.sections.find((section) => section.id === customId)!.blocks[0].concepts.map((concept) => [concept.label, concept.value]), [["Plano nuevo", ""]], "the structure, without the data");
+  assert.deepEqual(content.sections.find((section) => section.id === customId)!.blocks[0].concepts.map((concept) => [concept.label, concept.value]), [["Plano nuevo", "Planta baja"]], "saved «con datos del inmueble», the template keeps them for «Importar»");
   const catalogs = await getValuationCreationCatalogs(fixture.organizationId);
   const option = catalogs.templates.find((template) => template.publicId === original.id)!;
   assert.equal(option.description, "Para departamentos en condominio");

@@ -226,6 +226,8 @@ export function ValuationWorkspace({
   }, []);
 
   const liveFormulasRef = useRef<(owners: string[]) => void>(() => undefined);
+  // The calculations' pages are not steps of the document's undo: after an undo or a redo they are written again.
+  const resyncCalculationsRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const {
     exitDialogOpen,
     exitWithoutSaving,
@@ -407,8 +409,12 @@ export function ValuationWorkspace({
     }
     return step;
   };
-  const undo = () => revealHistoryStep(undoEditorChange());
-  const redo = () => revealHistoryStep(redoEditorChange());
+  const afterHistoryStep = (step: AppliedHistoryStep | null) => {
+    if (step) void resyncCalculationsRef.current();
+    return revealHistoryStep(step);
+  };
+  const undo = () => afterHistoryStep(undoEditorChange());
+  const redo = () => afterHistoryStep(redoEditorChange());
   useEditorHistoryShortcuts({ canEdit, onUndo: undo, onRedo: redo });
   const handleRestoreSection = (sectionId: string) => {
     updateSections((current) => restoreSection(current, sectionId));
@@ -457,6 +463,7 @@ export function ValuationWorkspace({
   });
   useEffect(() => {
     liveFormulasRef.current = calculationSync.onLiveFormulas;
+    resyncCalculationsRef.current = calculationSync.resyncAll;
   });
 
   // A template is made from what is saved, so pending changes are saved first.

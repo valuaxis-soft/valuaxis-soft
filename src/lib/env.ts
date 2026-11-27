@@ -128,8 +128,8 @@ const envObject = z.object({
    */
   ACCOUNT_INACTIVITY_ENABLED: z.string().optional(),
   /**
-   * "true" lets `pnpm valuations:retention --apply` email before a concluded valuation's retention expires
-   * and suppress it once expired (src/features/valuations/retention/retention.service.ts). Off: it only counts.
+   * "true" lets `pnpm valuations:retention --apply` remove the stored PDF copies of the valuations concluded
+   * more than twelve months ago; the valuations stay (src/features/valuations/retention/retention.service.ts). Off: it only counts.
    */
   VALUATION_RETENTION_ENABLED: z.string().optional(),
 });

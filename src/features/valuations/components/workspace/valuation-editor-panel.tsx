@@ -119,6 +119,7 @@ import {
   isConclusionNarrativeConcept,
   primaryCaratulaConclusionId,
 } from "@/features/valuations/services/caratula-blocks";
+import { appraisedGoodWording } from "@/features/valuations/services/appraised-good-wording";
 import { apartadoDisplayLabel, getBlockFlowApartadoOrder } from "@/features/valuations/services/visible-numbering";
 import { resolveBlockFlowV2, moveBlockFlowV2ApartadoOneStep, canMoveBlockFlowV2ApartadoOneStep } from "@/features/valuations/services/block-flow";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
@@ -325,11 +326,18 @@ export function ValuationEditorPanel(props: {
   );
   // The conclusion that prints the commercial value carries its fields in the editor too.
   const valueConclusionId = isCaratula ? primaryCaratulaConclusionId(editableBlocks) : null;
+  // Kept with the header block, which every carátula has, with or without a conclusion block.
+  const headerBlock = isCaratula ? section.blocks.find((block) => block.id === COMPANY_HEADER_BLOCK_ID) : undefined;
   const calculatedValuesEditor = isCaratula && props.caratula && props.onUpdateCaratula ? (
     <CalculatedValuesEditor
       caratula={props.caratula}
       readOnly={props.readOnly}
       onUpdate={props.onUpdateCaratula}
+      valueTitle={headerBlock ? {
+        value: headerBlock.valueTitle ?? "",
+        automatic: appraisedGoodWording(props.meta?.propertyKind, props.meta?.essence).commercialValueTitle,
+        onChange: (valueTitle) => props.onUpdateBlock(section.id, headerBlock.id, { valueTitle }),
+      } : undefined}
     />
   ) : null;
   // A market section shows the pages of the market open in its panel; the appraiser's own blocks always show.
@@ -554,6 +562,8 @@ export function ValuationEditorPanel(props: {
                     <FieldTitle>Bloques de la carátula</FieldTitle>
                     <div className="flex flex-wrap gap-2">
                       <PasteBlockButton section={section} />
+                      {/* Blocks of another valuation's or a template's carátula, or any block made of concepts (video 8.5, 0:12). */}
+                      <ImportBlockButton section={section} />
                       <Button
                         type="button"
                         size="sm"
