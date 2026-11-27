@@ -240,7 +240,7 @@ export function documentBlockFlowItems(
           id: apId,
           startOnNewPage: headBreak === "new-page",
           continuesPrevious: underTitle ?? (headBreak === "continue" ? true : undefined),
-          keepWithNext: head.rows.length > 0 && headBreak !== "continue",
+          keepWithNext: (head.rows.length > 0 || Boolean(head.keepWithNext)) && headBreak !== "continue",
           node: head.node,
         });
         head.rows.forEach((layoutRow, index) => {
@@ -350,7 +350,12 @@ function withBlockPageBreak(block: Block, items: DocumentFlowItem[]): DocumentFl
 }
 
 /** An apartado printed in a format of its own; see `renderApartadoHead`. */
-export type ApartadoHead = { node: React.ReactNode; rows: ContentLayoutRowV2[] };
+export type ApartadoHead = {
+  node: React.ReactNode;
+  rows: ContentLayoutRowV2[];
+  /** It goes to the next page with what follows it rather than leave that alone at the top of the next one. */
+  keepWithNext?: boolean;
+};
 
 /**
  * The row is one table and nothing else, long enough to break across pages:

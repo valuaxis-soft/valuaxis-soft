@@ -26,3 +26,21 @@ export function imageLayoutWidthForPercent(value: number): ImageContent["layoutW
   if (value >= IMAGE_WIDTH_PRESETS.wide) return "wide";
   return "normal";
 }
+
+/**
+ * An image uploaded in place of another («Reemplazar», or the empty frame of
+ * a template, as the subject's photographs): it takes the place, the name
+ * and the width of the one it replaces; in an empty frame never sized, the
+ * whole width, as any new image (video 8.14, 30:44: «las imágenes por default
+ * ancho completo 100%»).
+ */
+export function replacedImage(current: ImageContent, uploaded: ImageContent): ImageContent {
+  const sized = Boolean(current.src) || current.layoutWidth !== undefined || current.layoutWidthPercent !== undefined;
+  return {
+    ...uploaded,
+    id: current.id,
+    title: current.title || uploaded.title,
+    layoutWidth: sized ? current.layoutWidth : "full",
+    layoutWidthPercent: sized ? current.layoutWidthPercent : undefined,
+  };
+}

@@ -60,6 +60,8 @@ export function newCroquisImage(marker: CroquisImageMarker, src: string, id: str
     title: caption,
     src,
     enabled: true,
+    // Video 8.14, 30:44: «las imágenes por default ancho completo 100%», the croquis too.
+    layoutWidth: "full",
     croquis: marker,
     ...captionsPatch([{ id: "caption-1", text: caption, position: "bottom", align: "center" }]),
   };

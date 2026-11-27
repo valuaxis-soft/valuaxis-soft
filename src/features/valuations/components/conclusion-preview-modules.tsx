@@ -8,6 +8,7 @@
  */
 import type { Apartado, Block, CaratulaFormData, Concept, ValueChartStyle } from "../model";
 import { resolveContentLayout } from "@/features/valuations/services/content-layout";
+import { getBlockFlowApartadoOrder } from "@/features/valuations/services/visible-numbering";
 import { titlePrints } from "@/features/valuations/services/block-title";
 import {
   CONCLUSION_KEYS,
@@ -311,6 +312,12 @@ function conclusionApartadoHead(block: Block, caratula: Pick<CaratulaFormData, "
   // The chart draws the resumen of the block, wherever its subbloque is.
   const summaryOfBlock = [block, ...block.apartados.filter((apartado) => apartado.enabled !== false)]
     .flatMap((container) => inEditorOrder(container, container.concepts.filter(visible).filter(isSummaryConcept)));
+  // The subbloques that print, in order: the concluded value keeps with the signature that follows it.
+  const printed = getBlockFlowApartadoOrder(block).filter((apartado) => apartado.enabled !== false);
+  const signsNext = (subBlock: Apartado) => {
+    const next = printed[printed.findIndex((apartado) => apartado.id === subBlock.id) + 1];
+    return Boolean(caratula && next?.concepts.filter(visible).some(isSignerConcept));
+  };
   return (subBlock: Apartado, displayLabel: string): ApartadoHead | null => {
     const concepts = subBlock.concepts.filter(visible);
     const title = apartadoTitle(subBlock, displayLabel);
@@ -343,12 +350,15 @@ function conclusionApartadoHead(block: Block, caratula: Pick<CaratulaFormData, "
           </section>
         ),
         rows: restRows(subBlock, (concept) => isSummaryConcept(concept) || (Boolean(concluded) && isValueConcept(concept))),
+        // Video 8.15: the signature never opens a page alone; when it does not fit under the value, the value goes with it.
+        keepWithNext: Boolean(concluded) && signsNext(subBlock),
       };
     }
     if (caratula && concepts.some(isSignerConcept)) {
       const signatures = conclusionSignatures({ ...block, concepts: subBlock.concepts }, caratula);
       return {
-        node: <section className="break-inside-avoid pt-1" data-conclusion-signatures>{title}<SignatureLines signatures={signatures} /></section>,
+        // No room of its own above or below: the gap to the value is the flow's, so it stays on the value's page when it fits (video 8.15).
+        node: <section className="break-inside-avoid" data-conclusion-signatures>{title}<SignatureLines signatures={signatures} trailingRoom={false} /></section>,
         // Registro, Firma…: printed only when written; the line to sign is the signature's own.
         rows: restRows(subBlock, (concept) => isSignerConcept(concept) || !concept.value.trim()),
       };
@@ -376,7 +386,7 @@ export function conclusionBlockFlowItems(
   if (caratula && isSignaturesBlock(block)) {
     // Registro, Firma…: printed only when written; the line to sign is the signature's own.
     const rest = block.concepts.filter((concept) => !isSignerConcept(concept) && concept.value.trim());
-    const signatures = <section className="break-inside-avoid pt-1" data-conclusion-signatures><SignatureLines signatures={conclusionSignatures(block, caratula)} /></section>;
+    const signatures = <section className="break-inside-avoid" data-conclusion-signatures><SignatureLines signatures={conclusionSignatures(block, caratula)} trailingRoom={false} /></section>;
     return withModule(print({ ...block, concepts: rest }, { renderApartadoHead }), block, { id: `${block.id}:signatures`, node: signatures }, "end");
   }
   return print(block, { renderApartadoHead });
