@@ -4,9 +4,8 @@
  * (comparables of type INMUEBLE_RENTA). Three methods, as the firm's books:
  * the rate table (TCH), the annuity (TU) and the market rate (TR).
  */
-import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, type IncomeApproachInput, type IncomeApproachResult, type IncomeMethod } from "../engine/income";
-import { homologate, type HomologationInput, type HomologationStats } from "../engine/market";
-import { Trace } from "../engine/trace";
+import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES, type IncomeApproachInput, type IncomeMethod } from "../engine/income";
+import type { HomologationInput } from "../engine/market";
 import type { CapturedFormulas, PercentFields } from "./captured-formulas";
 import { withPrecision, type CalculationPrecision } from "./calculation-precision";
 import { DEFAULT_ENGINE_CONFIG, type EngineConfig, type RoundingDigits } from "../engine/config";
@@ -67,6 +66,81 @@ export const DEFAULT_MARKET_RATE: MarketRateDto = { negotiation: 0, vacancy: 0.0
 export type RentableUnitDto = { description: string; area: number | null; unitRent: number | null };
 export type IncomeDeductionDto = { concept: string; rate: number | null };
 
+/**
+ * A row of Bravo Armejo's rate table as the appraiser keeps it: the concept
+ * and the six options under 7 % … 12 %. A row whose concept reads
+ * «calificación» is where the criterion above it is rated (video 8.14,
+ * 25:20: «debería de detectar en automático que si dice calificación se
+ * pinta en verde»). `key` names the row for good.
+ */
+export type RateTableRowDto = { key: string; cells: string[] };
+
+/** The six options of each row, one under each rate. */
+export const RATE_TABLE_OPTIONS = RATE_TABLE_RATES.length;
+/** The rated row of each criterion, as the books name it. */
+export const RATING_ROW_LABEL = "calificación";
+
+const plainLabel = (text: string) => text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+/** A row where a criterion is rated: its concept reads «calificación», whatever its accents or capitals. */
+export const isRatingRow = (row: Pick<RateTableRowDto, "cells">) => plainLabel(row.cells[0] ?? "") === "calificacion";
+
+const ratingKey = (key: string) => `calificacion-${key}`;
+const criterionRows = (key: string, rows: string[][]): RateTableRowDto[] => [
+  ...rows.map((cells, index) => ({ key: index === 0 ? key : `${key}-${index + 1}`, cells })),
+  { key: ratingKey(key), cells: [RATING_ROW_LABEL, ...RATE_TABLE_RATES.map(() => "")] },
+];
+
+/**
+ * The criteria of the rate table as the books print them («XII.3 CALCULO DE
+ * TASA», TCH and Arandas, rows 30 to 45): what each column means, in one or
+ * two rows, and under them the row where the column is rated. In the order of
+ * RATE_TABLE_CRITERIA.
+ */
+export const DEFAULT_RATE_TABLE: RateTableRowDto[] = [
+  ...criterionRows("edad", [["EDAD (AÑOS)", "0 - 5", "5 - 20", "20 - 40", "40 - 50", "50 - 60", "MÁS DE 60"]]),
+  ...criterionRows("vida-util", [["VIDA ÚTIL REMANENTE", "MÁS DE 60", "50 - 60", "40 - 50", "20 - 40", "5 - 20", "TERMINADA"]]),
+  ...criterionRows("conservacion", [["ESTADO DE CONSERVACIÓN", "NUEVA", "MUY BUENO", "BUENO", "REGULAR", "MALO", "RUINOSO"]]),
+  ...criterionRows("proyecto", [["PROYECTO", "MUY BUENO", "BUENO", "ADECUADO", "REGULAR", "DEFICIENTE", "MALO"]]),
+  ...criterionRows("relacion", [
+    ["REL. SUP. (TERRENO/CONSTR.)", "CONST>TERR", "CONST>TERR", "CONST>TERR", "CONST=TERR", "TERR > CONST", "TERR > CONST"],
+    ["RELACIÓN", "MAYOR 3-1", "HASTA 3-1", "HASTA 2-1", "1 -1", "HASTA 3-1", "MAYOR 3-1"],
+  ]),
+  ...criterionRows("uso", [
+    ["USO DEL INMUEBLE", "CASA", "EDIF. PROD.", "DPTO/CASA", "OFNA/LOCAL", "OFNA/LOCAL", "BODEGA"],
+    ["INMUEBLE", "UNIF.", "HAB-COM", "CONDOM.", "CONDOM.", "UNIF.", "INDUSTRIA"],
+  ]),
+  ...criterionRows("zona", [["CLASIFICACIÓN DE ZONA", "LUJO", "1ER. ORDEN", "2DO. ORDEN", "3ER. ORDEN", "PROL. SERV. COM.", "PROL. SERV. INC."]]),
+];
+
+/** The rate table of a calculation: the appraiser's, or the books' while he has not changed it. */
+export const rateTableOf = (calculation: { rateTable?: RateTableRowDto[] | null }): RateTableRowDto[] =>
+  calculation.rateTable?.length ? calculation.rateTable : DEFAULT_RATE_TABLE;
+
+/**
+ * The criteria of a rate table: each «calificación» row and the name of its
+ * criterion (the first row since the rating before it). A criterion the
+ * appraiser adds, with its «calificación», counts in the sums and the rate
+ * (video 8.14, 25:50: «que me lo considere»).
+ */
+export function rateCriteriaOf(rows: ReadonlyArray<RateTableRowDto>): { name: string; ratingKey: string }[] {
+  const criteria: { name: string; ratingKey: string }[] = [];
+  let name = "";
+  for (const row of rows) {
+    if (isRatingRow(row)) {
+      criteria.push({ name: name || `Criterio ${criteria.length + 1}`, ratingKey: row.key });
+      name = "";
+    } else if (!name) {
+      name = row.cells[0]?.trim() ?? "";
+    }
+  }
+  return criteria;
+}
+
+/** The ratings as many as the criteria of the table: missing ones not rated yet, extra ones dropped. */
+export function ratingColumnsFor(rows: ReadonlyArray<RateTableRowDto>, ratingColumns: ReadonlyArray<number | null>): (number | null)[] {
+  return rateCriteriaOf(rows).map((_, index) => ratingColumns[index] ?? null);
+}
+
 export type IncomeInputDto = {
   method: IncomeMethod;
   annuity: AnnuityDto;
@@ -75,6 +149,13 @@ export type IncomeInputDto = {
   deductions: IncomeDeductionDto[];
   /** Column chosen for each criterion of the rate table, or null while not chosen. */
   ratingColumns: (number | null)[];
+  /** The rate table as the appraiser edited it (rows, criteria, options); absent, the books'. */
+  rateTable?: RateTableRowDto[] | null;
+  /**
+   * The deductions printed in two tables, side by side (video 8.14, 16:10):
+   * the second starts at this deduction; null, one table. Both count.
+   */
+  deductionsSplit?: number | null;
   /** IV) Tasa aplicada: the rate the appraiser applies; the rate from the table when empty. */
   appliedRate: number | null;
   /** II) Tasa obtenida de mercado, of the books' «Tasa a utilizar»: printed for reference, it does not enter the calculation. */
@@ -98,6 +179,8 @@ export type IncomeCalculationDto = IncomeInputDto & {
    */
   rentMarket: {
     adoptedUnitRent: number | null;
+    /** The monthly rent the rent market concludes, rounded as it was rounded there; null without one. */
+    concludedMonthlyRent?: number | null;
     subjectArea: number | null;
     comparables: Array<{ reference: number; location: string; area: number | null; price: number | null }>;
     homologation: HomologationInput | null;
@@ -112,27 +195,50 @@ export type IncomeCalculationDto = IncomeInputDto & {
 export const incomeEngineConfig = (calculation: { precision?: CalculationPrecision | null }): EngineConfig =>
   withPrecision(DEFAULT_ENGINE_CONFIG, calculation.precision);
 
+/* ------------------------------------------------------------------ */
+/*  Bravo Armejo's table: rows the appraiser adds, removes and renames  */
+/* ------------------------------------------------------------------ */
+
+/** A key no row of the table uses yet. */
+function freeRowKey(rows: ReadonlyArray<RateTableRowDto>, base: string) {
+  const used = new Set(rows.map((row) => row.key));
+  let number = rows.length + 1;
+  while (used.has(`${base}-${number}`)) number += 1;
+  return `${base}-${number}`;
+}
+
+const blankRow = (key: string, label = ""): RateTableRowDto => ({ key, cells: [label, ...Array.from({ length: RATE_TABLE_OPTIONS }, () => "")] });
+
 /**
- * The rent market's statistics as the income approach reads them: the
- * lowest and highest rents offered and homologated and their dispersions
- * (initial and final), as the market approach shows them. The market-rate
- * method homologates the rents itself; the other two take the adopted rent,
- * so the statistics come from homologating the rent comparables apart,
- * without entering the calculation. Null without a rent market.
+ * The table after a change of its rows, with each criterion's rating kept
+ * on its «calificación» row: a row added, taken out or renamed to (or from)
+ * «calificación» moves no rating to another criterion.
  */
-export function rentMarketStats(
-  calculation: Pick<IncomeCalculationDto, "rentMarket" | "precision">,
-  result: Pick<IncomeApproachResult, "rentMarket"> | null,
-): HomologationStats | null {
-  if (result?.rentMarket) return result.rentMarket.stats;
-  const homologation = calculation.rentMarket.homologation;
-  if (!homologation?.comparables.length) return null;
-  const config = incomeEngineConfig(calculation);
-  try {
-    return homologate(homologation, config.surfaceOrientation.income, new Trace(), "ingresos.rentas", config.displayedPrecision).stats;
-  } catch {
-    return null;
+export function withRateRows(
+  table: { rateTable: RateTableRowDto[]; ratingColumns: (number | null)[] },
+  rows: RateTableRowDto[],
+): { rateTable: RateTableRowDto[]; ratingColumns: (number | null)[] } {
+  const before = new Map(rateCriteriaOf(table.rateTable).map((criterion, index) => [criterion.ratingKey, table.ratingColumns[index] ?? null]));
+  return { rateTable: rows, ratingColumns: rateCriteriaOf(rows).map((criterion) => before.get(criterion.ratingKey) ?? null) };
+}
+
+/** Row edits of the rate table: a row under this one, a criterion (its row and its «calificación») under it, or the row taken out. */
+export function editRateRows(rows: ReadonlyArray<RateTableRowDto>, edit: "row-below" | "criterion-below" | "delete", index: number): RateTableRowDto[] {
+  const next = [...rows];
+  if (edit === "delete") {
+    next.splice(index, 1);
+    return next;
   }
+  const concept = blankRow(freeRowKey(rows, "propio"));
+  if (edit === "row-below") {
+    next.splice(index + 1, 0, concept);
+    return next;
+  }
+  // A criterion goes after the «calificación» that closes the criterion of this row.
+  const closing = rows.findIndex((row, at) => at >= index && isRatingRow(row));
+  const at = closing === -1 ? rows.length : closing + 1;
+  next.splice(at, 0, concept, blankRow(freeRowKey([...rows, concept], "calificacion-propia"), RATING_ROW_LABEL));
+  return next;
 }
 
 export const DEFAULT_INCOME: IncomeInputDto = {
@@ -148,13 +254,29 @@ export const DEFAULT_INCOME: IncomeInputDto = {
   rounding: null,
 };
 
+/**
+ * The monthly rent the rent market concluded, when the income approach takes
+ * it as its gross rent: one rentable surface that inherits the market's rent
+ * and the subject's area (or has that same area typed). Otherwise null: the
+ * surfaces are worked out as before, area × rent.
+ */
+export function concludedMonthlyRentFor(calculation: Pick<IncomeCalculationDto, "rentableUnits" | "rentMarket">): number | null {
+  const concluded = calculation.rentMarket.concludedMonthlyRent;
+  const units = calculation.rentableUnits;
+  if (!concluded || concluded <= 0 || units.length !== 1 || units[0].unitRent !== null) return null;
+  const adopted = calculation.rentMarket.adoptedUnitRent;
+  const subjectArea = calculation.rentMarket.subjectArea;
+  if (!adopted || adopted <= 0 || !subjectArea || subjectArea <= 0) return null;
+  return units[0].area === null || units[0].area === subjectArea ? concluded : null;
+}
+
 type EngineInputResult = { ok: true; input: IncomeApproachInput } | { ok: false; reason: string };
 
 const positive = (value: number | null | undefined): value is number => typeof value === "number" && value > 0;
 
 export function toIncomeEngineInput(
   calculation: Pick<IncomeCalculationDto, "method" | "annuity" | "marketRate" | "rentableUnits" | "deductions" | "ratingColumns" | "appliedRate" | "rentMarket">
-    & Partial<Pick<IncomeCalculationDto, "rounding">>,
+    & Partial<Pick<IncomeCalculationDto, "rounding" | "rateTable">>,
 ): EngineInputResult {
   const rounding = calculation.rounding === undefined || calculation.rounding === null ? {} : { rounding: calculation.rounding };
   const deductions = calculation.deductions.map((deduction) => ({ concept: deduction.concept, rate: deduction.rate ?? 0 }));
@@ -191,9 +313,11 @@ export function toIncomeEngineInput(
   if (units.some((unit) => unit.unitRent === null) && !(adopted && adopted > 0)) {
     return { ok: false, reason: "Captura la renta unitaria, o el mercado de rentas." };
   }
+  const concluded = concludedMonthlyRentFor(calculation);
   const rentInput = {
     ...rounding,
     ...(adopted ? { adoptedUnitRent: adopted } : {}),
+    ...(concluded !== null ? { adoptedMonthlyRent: concluded } : {}),
     rentableUnits: units.map((unit) => ({
       description: unit.description || "Superficie rentable",
       area: unit.area as number,
@@ -226,17 +350,19 @@ export function toIncomeEngineInput(
     };
   }
 
-  const tableComplete = calculation.ratingColumns.length === RATE_TABLE_CRITERIA.length
-    && calculation.ratingColumns.every((column) => column !== null);
+  const criteria = rateCriteriaOf(rateTableOf(calculation));
+  const ratings = ratingColumnsFor(rateTableOf(calculation), calculation.ratingColumns);
+  const tableComplete = ratings.length > 0 && ratings.every((column) => column !== null);
   if (!calculation.appliedRate && !tableComplete) {
-    return { ok: false, reason: "Califica los siete criterios de la tabla de tasa, o captura la tasa." };
+    const count = criteria.length === RATE_TABLE_CRITERIA.length ? "los siete" : `los ${criteria.length}`;
+    return { ok: false, reason: `Califica ${count} criterios de la tabla de tasa, o captura la tasa.` };
   }
   return {
     ok: true,
     input: {
       ...rentInput,
       capitalization: {
-        ...(tableComplete ? { ratingColumns: calculation.ratingColumns as number[], rates: RATE_TABLE_RATES } : {}),
+        ...(tableComplete ? { ratingColumns: ratings as number[], rates: RATE_TABLE_RATES, criteria: criteria.map((item) => item.name) } : {}),
         ...(calculation.appliedRate ? { appliedRate: calculation.appliedRate } : {}),
       },
     },

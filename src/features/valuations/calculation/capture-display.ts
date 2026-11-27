@@ -101,7 +101,10 @@ function captureApartados(live: Apartado[], saved: Apartado[]): Apartado[] {
 
 /** The block of the dictamen with the tables of the capture: what the appraiser set on the block and its concepts stays. */
 function captureBlock(live: Block, saved: Block): Block {
-  return { ...saved, tables: captureTables(live.tables, saved.tables), apartados: captureApartados(live.apartados, saved.apartados) };
+  // A subbloque the appraiser deleted is not captured in either.
+  const removed = new Set((saved.removedApartados ?? []).map(key));
+  const apartados = live.apartados.filter((apartado) => !removed.has(key(apartado.id)));
+  return { ...saved, tables: captureTables(live.tables, saved.tables), apartados: captureApartados(apartados, saved.apartados) };
 }
 
 /**

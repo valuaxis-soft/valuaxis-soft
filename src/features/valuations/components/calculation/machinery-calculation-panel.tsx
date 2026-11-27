@@ -81,6 +81,7 @@ import { collectFormulas, renumberFormulas, withFormulaTexts } from "@/features/
 import { effectiveUsefulLife } from "@/features/valuations/engine/factors";
 import { MACHINERY_CONSERVATION, computeMachineryCost, computeMachineryMarket } from "@/features/valuations/engine/machinery";
 import { RoundingSelect } from "./calculation-controls";
+import { RoundingMenu } from "./rounding-menu";
 import { CALC_SECTION_HEADING } from "./calculation-table-style";
 import { numbersOf, textsOf, type Texts } from "./draft-texts";
 import { FormulaInput } from "./formula-input";
@@ -1123,10 +1124,14 @@ function MarketForm({ valuationId, readOnly, calculation, onSaved, vehicle = fal
           <div className="grid gap-2 rounded-md border bg-background p-2" data-market-statistics="">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="text-sm font-semibold">Valores y estadísticas</h4>
-              <fieldset disabled={readOnly} className="flex items-center gap-2 text-sm">
-                <label htmlFor="machinery-market-rounding" className="text-xs text-muted-foreground">Redondeo del valor</label>
-                <RoundingSelect id="machinery-market-rounding" label="Redondeo del valor de mercado" value={draft.rounding} onChange={(rounding) => change((current) => ({ ...current, rounding }))} />
-              </fieldset>
+              {/* The rounding is an option of the value itself, in its bar under the homologation (video 8.14, 06:50); here only while that bar is not on screen. */}
+              <CaptureSlot at={{ table: homologationTable, box: "valor.valor" }} fallback>
+                {result ? (
+                  <RoundingMenu label="valor de mercado" value={draft.rounding} readOnly={readOnly} onChange={(rounding) => change((current) => ({ ...current, rounding }))}>
+                    <span className="rounded-sm bg-muted/70 px-1.5 py-1 text-right font-semibold tabular-nums" data-market-value="">{money(result.value)}</span>
+                  </RoundingMenu>
+                ) : null}
+              </CaptureSlot>
             </div>
             <StatisticsTable
               choice={choice}

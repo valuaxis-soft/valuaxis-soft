@@ -55,7 +55,10 @@ const resultOf = (calculation: IncomeCalculationDto) => {
   assert.ok(input.ok, input.ok ? "" : input.reason);
   return computeIncomeApproach(input.input, DEFAULT_ENGINE_CONFIG);
 };
-const tableIn = (blocks: Block[], id: string) => ensureTableV2(blocks.flatMap((block) => block.tables).find((table) => table.id === id)!);
+const tablesOf = (blocks: Block[]) => blocks.flatMap((block) => [...block.tables, ...block.apartados.flatMap((apartado) => apartado.tables)]);
+const tableIn = (blocks: Block[], id: string) => ensureTableV2(tablesOf(blocks).find((table) => table.id === id)!);
+const apartadoOf = (blocks: Block[], key: string) => blocks[0].apartados.find((apartado) => apartado.id === `motor-ingresos-enfoque-${key}`)!;
+const valueOf = (blocks: Block[]) => ensureTableV2(apartadoOf(blocks, "resultado").tables[0]).schema!.summaryBoxes![0].rows[0].value;
 const text = (table: TableV2, rowId: string) => table.columns.map((column) => {
   const cell = table.rows.find((row) => row.id === rowId)?.cells[column.id];
   return cell?.kind === "value" ? cell.value : "";
@@ -141,7 +144,7 @@ test("«Tasa a utilizar»: I) resultant, II) market and III) weighted when captu
     ["IV) Tasa aplicada:", "8.8600%"],
   ]);
   // The TCH book's value with its applied rate (I65 = I63 / I64).
-  assert.equal(blocks.at(-1)!.concepts.at(-1)!.value, "$700,902.93 M.N.");
+  assert.equal(valueOf(blocks), "$700,902.93 M.N.");
 });
 
 test("FAL-13: without a rate typed, the value divides by the table's rate with every decimal, not by the one printed", () => {
@@ -159,11 +162,11 @@ test("FAL-45: the value follows the rounding chosen and prints with «M.N.»; th
   const result = resultOf(calculation);
   assert.equal(result.value, 700000);
   close(result.unroundedValue, 700902.934537246);
-  const concepts = incomeDocumentBlocks(calculation, result).at(-1)!.concepts.map((concept) => [concept.label, concept.value]);
-  assert.deepEqual(concepts, [
-    ["Valor por capitalización de rentas, sin redondear", "$700,902.93"],
-    ["Valor por capitalización de rentas", "$700,000.00 M.N."],
-  ]);
+  const blocks = incomeDocumentBlocks(calculation, result);
+  const table = tableIn(blocks, "motor-ingresos-tabla-resultado");
+  assert.deepEqual(rowsText(table).at(-1), ["Valor sin redondear:", "$700,902.93"]);
+  // In the dark bar of the concluded value, as the other approaches (video 8.14, 26:25).
+  assert.deepEqual(table.schema?.summaryBoxes?.[0].rows, [{ id: "valor", label: "VALOR DE CAPITALIZACIÓN:", value: "$700,000.00 M.N.", emphasis: "total" }]);
 });
 
 test("FAL-13: the rent adopted in the rent market and its subject's area flow into the rentable surface, with the rents worked out before the rate", () => {
@@ -176,11 +179,11 @@ test("FAL-13: the rent adopted in the rent market and its subject's area flow in
   const input = toIncomeEngineInput(calculation);
   assert.equal(input.ok, false, "the rate is still missing");
   for (const blocks of [incomeCaptureBlocks(calculation, null), incomeDocumentBlocks(calculation, null, input.ok ? "" : input.reason)]) {
-    const rents = blocks.find((block) => block.id === "motor-ingresos-rentas")!;
-    const table = ensureTableV2(rents.tables[0]);
+    const table = tableIn(blocks, INCOME_CAPTURE.units.table);
     assert.deepEqual(text(table, table.rows[0].id), ["Superficie rentable", "248.00 m²", "$112.00 /m²/mes", "$27,776.00"]);
-    assert.equal(rents.concepts.find((concept) => concept.id.endsWith("-bruta"))!.value, "$27,776.00");
-    assert.equal(rents.concepts.find((concept) => concept.id.endsWith("-neta-mensual"))!.value, "$19,165.44");
+    const result = tableIn(blocks, INCOME_CAPTURE.result.table);
+    assert.deepEqual(text(result, INCOME_CAPTURE.result.row("bruta")), ["Ingreso bruto mensual ($):", "$27,776.00"]);
+    assert.deepEqual(text(result, INCOME_CAPTURE.result.row("neta-mensual")), ["Renta neta mensual ($):", "$19,165.44"]);
   }
   // One rent: the engine takes the adopted one, as the memory does.
   const rated = resultOf({ ...calculation, ratingColumns: tch.ratingColumns });
@@ -235,40 +238,41 @@ function besideIn(layout: ContentLayout, first: string, second: string): Content
 }
 
 test("the tables of a generated block are arranged as any block's: its rows of tables are taken out and put back in their place (video 8.10, 25:40)", () => {
-  const rate = incomeDocumentBlocks(tch, resultOf(tch)).find((block) => block.id === "motor-ingresos-tasa")!;
+  const rate = apartadoOf(incomeDocumentBlocks(tch, resultOf(tch)), "tasa") as unknown as Block;
   const layout = resolveContentLayout(rate);
   const ids = new Set(rate.tables.map((table) => table.id));
-  const [first, , third] = rate.tables.map((table) => table.id);
+  const [first, second] = rate.tables.map((table) => table.id);
   // Only the rows of tables are dragged; given back unchanged, the layout is the same.
   assert.deepEqual(tableRowsOf(layout, ids).rows.map((row) => row.columns[0].items[0].id), rate.tables.map((table) => table.id));
   assert.deepEqual(withTableRows(layout, tableRowsOf(layout, ids), ids).rows.map((row) => row.columns.map((column) => column.items[0].id)), layout.rows.map((row) => row.columns.map((column) => column.items[0].id)));
-  // «Tasa a utilizar» dropped beside «Cálculo de tasa»: one row with the two.
-  const beside = besideIn(layout, first, third);
+  // «Resultado» dropped beside «Cálculo de tasa»: one row with the two.
+  const beside = besideIn(layout, first, second);
   assert.equal(beside.rows.length, layout.rows.length - 1);
-  assert.deepEqual(beside.rows.find((row) => row.columns.length === 2)!.columns.map((column) => column.items[0].id), [first, third]);
+  assert.deepEqual(beside.rows.find((row) => row.columns.length === 2)!.columns.map((column) => column.items[0].id), [first, second]);
   // A row of concepts keeps its place among the rows of tables.
   const withConcept: ContentLayout = { version: 2, rows: [{ id: "r-concepto", columns: [{ id: "c-concepto", items: [{ type: "concept", id: "nota" }] }] }, ...layout.rows] };
   const arranged = withTableRows(withConcept, { version: 2, rows: [...tableRowsOf(withConcept, ids).rows].reverse() }, ids);
   assert.deepEqual(arranged.rows.map((row) => row.columns[0].items[0].id), ["nota", ...[...rate.tables.map((table) => table.id)].reverse()]);
 });
 
-test("the appraiser's own table and the layout stay when the calculation writes the block again", () => {
+test("the appraiser's own table in a subbloque and its layout stay when the calculation writes the block again (video 8.14, 19:50)", () => {
   const written = incomeDocumentBlocks(tch, resultOf(tch));
-  const rate = written.find((block) => block.id === "motor-ingresos-tasa")!;
+  const block = written[0];
+  const rate = apartadoOf(written, "tasa");
   const withOwn = { ...rate, tables: [...rate.tables, ownTable] };
-  const [, , toUse] = rate.tables.map((table) => table.id);
-  const arranged: Block = { ...withOwn, contentLayout: besideIn(resolveContentLayout(withOwn), rate.tables[0].id, toUse) };
-  const before = section(written.map((block) => (block.id === rate.id ? arranged : block)));
+  const [first, second] = rate.tables.map((table) => table.id);
+  const arranged = { ...withOwn, contentLayout: besideIn(resolveContentLayout(withOwn), first, second) };
+  const before = section([{ ...block, apartados: block.apartados.map((apartado) => (apartado.id === rate.id ? arranged : apartado)) }]);
   // Another rating: the rate table changes, the appraiser's table and the two tables side by side stay.
   const again = { ...tch, ratingColumns: [1, 0, 1, 0, 4, 0, 1] };
-  const after = replaceGeneratedBlocks(before, (block) => block.id.startsWith("motor-ingresos"), incomeDocumentBlocks(again, resultOf(again)));
-  const kept = after.blocks.find((block) => block.id === rate.id)!;
-  assert.deepEqual(kept.tables.map((table) => table.id), [...rate.tables.map((table) => table.id), ownTable.id]);
-  assert.ok(text(tableIn([kept], INCOME_CAPTURE.rateResult.table), tableIn([kept], INCOME_CAPTURE.rateResult.table).rows.at(-1)!.id).includes("8.0000%"));
+  const after = replaceGeneratedBlocks(before, (item) => item.id.startsWith("motor-ingresos"), incomeDocumentBlocks(again, resultOf(again)));
+  const kept = after.blocks[0].apartados.find((apartado) => apartado.id === rate.id)!;
+  assert.deepEqual(kept.tables.map((table) => table.id), [first, second, ownTable.id]);
+  assert.ok(text(tableIn(after.blocks, INCOME_CAPTURE.rateResult.table), tableIn(after.blocks, INCOME_CAPTURE.rateResult.table).rows.at(-1)!.id).includes("8.0000%"));
   const rows = resolveContentLayout(kept).rows.map((row) => row.columns.map((column) => column.items[0].id));
-  assert.deepEqual(rows, [[rate.tables[0].id, toUse], [rate.tables[1].id], [ownTable.id]]);
+  assert.deepEqual(rows, [[first, second], [ownTable.id]]);
   // Written again the same, nothing changes.
-  assert.equal(replaceGeneratedBlocks(after, (block) => block.id.startsWith("motor-ingresos"), incomeDocumentBlocks(again, resultOf(again))), after);
+  assert.equal(replaceGeneratedBlocks(after, (item) => item.id.startsWith("motor-ingresos"), incomeDocumentBlocks(again, resultOf(again))), after);
   // A block without anything of the appraiser's is written as the calculation gives it.
-  assert.equal(withAppraiserLayout(rate, undefined), rate);
+  assert.equal(withAppraiserLayout(block, undefined), block);
 });

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { RATE_TABLE_CRITERIA, RATE_TABLE_RATES } from "../engine/income";
+import { RATE_TABLE_RATES } from "../engine/income";
 import { capturedFormulasSchema } from "./captured-formulas";
 
 const optionalNumber = (max: number) => z.number().finite().min(0).max(max).nullable();
@@ -30,7 +30,14 @@ export const incomeInputSchema = z.object({
     concept: z.string().trim().min(1, "Cada deducción necesita su concepto.").max(180),
     rate: z.number().finite().min(0).max(1).nullable(),
   })).max(20),
-  ratingColumns: z.array(z.number().int().min(0).max(RATE_TABLE_RATES.length - 1).nullable()).length(RATE_TABLE_CRITERIA.length),
+  // One per criterion of the rate table: the books' seven, or as many as the appraiser's table has.
+  ratingColumns: z.array(z.number().int().min(0).max(RATE_TABLE_RATES.length - 1).nullable()).max(40),
+  // The rate table as the appraiser edited it: its concept and the six options of each row.
+  rateTable: z.array(z.object({
+    key: z.string().trim().min(1).max(60),
+    cells: z.array(z.string().max(120)).length(RATE_TABLE_RATES.length + 1),
+  })).max(120).nullable().default(null),
+  deductionsSplit: z.number().int().min(1).max(19).nullable().default(null),
   appliedRate: z.number().finite().positive().max(1).nullable(),
   rateFromMarket: z.number().finite().positive().max(1).nullable().default(null),
   weightedRate: z.number().finite().positive().max(1).nullable().default(null),

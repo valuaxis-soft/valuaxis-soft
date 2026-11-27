@@ -133,6 +133,8 @@ export type BlockMetadata = {
   valueChart?: boolean;
   /** The carátula's conclusion only: the title of the value's box written by hand. */
   valueTitle?: string;
+  /** A block the calculation writes only: the ids of the subbloques the appraiser deleted. */
+  removedApartados?: string[];
 };
 
 export type ApartadoMetadata = {
@@ -347,7 +349,15 @@ export function blockMetadataFromContent(content: BlockMetadataContent): BlockMe
     coverImageSize: content.coverImageSize,
     valueChart: content.valueChart || undefined,
     ...(content.valueTitle?.trim() ? { valueTitle: content.valueTitle.trim().slice(0, VALUE_TITLE_MAX) } : {}),
+    ...(content.removedApartados?.length ? { removedApartados: readRemovedApartados(content.removedApartados) } : {}),
   };
+}
+
+/** The ids of the subbloques deleted from a block the calculation writes: strings, each once, a reasonable number. */
+function readRemovedApartados(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const ids = [...new Set(value.filter((id): id is string => typeof id === "string" && id.trim() !== "" && id.length <= 200))].slice(0, 50);
+  return ids.length ? ids : undefined;
 }
 
 export function hydrateBlockMetadata(config: unknown): BlockMetadata {
@@ -356,6 +366,7 @@ export function hydrateBlockMetadata(config: unknown): BlockMetadata {
   const pageBreak = readPageBreak(config);
   const pageOrientation = readConfigMetadata(config, (value) => (isRecord(value) && isPageOrientation(value.pageOrientation) ? value.pageOrientation : undefined));
   const valueTitle = readConfigMetadata(config, (value) => (isRecord(value) && typeof value.valueTitle === "string" && value.valueTitle.trim() ? value.valueTitle.trim().slice(0, VALUE_TITLE_MAX) : undefined));
+  const removedApartados = readConfigMetadata(config, (value) => (isRecord(value) ? readRemovedApartados(value.removedApartados) : undefined));
   return {
     enabled: true,
     ...(sectionBooleanMetadata(config, "titleHidden") ? { titleHidden: true } : {}),
@@ -370,6 +381,7 @@ export function hydrateBlockMetadata(config: unknown): BlockMetadata {
     ...(coverImageSize && !isDefaultCoverImageSize(coverImageSize) ? { coverImageSize } : {}),
     ...(readConfigMetadata(config, (value) => readBooleanMetadata(value, "valueChart")) ? { valueChart: true } : {}),
     ...(valueTitle ? { valueTitle } : {}),
+    ...(removedApartados ? { removedApartados } : {}),
   };
 }
 

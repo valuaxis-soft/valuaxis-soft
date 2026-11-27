@@ -27,11 +27,13 @@ const rent = (location: string, area: number, price: number, better: boolean): C
   notes: null, sourceName: null, contactName: null, contactPhone: null, url: null, offerDate: null,
 });
 
-async function rentMarket(subjectArea: number, adopted: number | null, rows: ComparableInputPayload[]) {
+/** `rounding`: how the rent market rounds its monthly rent; absent, the system's default. */
+async function rentMarket(subjectArea: number, adopted: number | null, rows: ComparableInputPayload[], rounding?: number | null) {
   const fixture = await createValuationFixture();
   await saveMarketSettings(fixture.publicId, fixture.user, {
     comparableType: "INMUEBLE_RENTA", subjectArea, baseArea: null, surfacePower: 6,
     adoptedUnitValue: adopted, justification: null, additionalAmount: 0, factorSlots: DEFAULT_FACTOR_SLOTS,
+    ...(rounding === undefined ? {} : { rounding }),
   });
   for (const row of rows) await createComparable(fixture.publicId, fixture.user, "INMUEBLE_RENTA", row);
   return fixture;
@@ -44,10 +46,11 @@ const stored = async (publicId: string) => {
 };
 
 test("TU annuity method stores 110,689.59 (option 2) and 230,800.37 (option 1)", async () => {
+  // The TU book does not round the rent market's monthly rent (its profile: market rounding none): 160 m² × $14.
   const fixture = await rentMarket(160, 14, [
     rent("Renta 1", 260, 3500, false), rent("Renta 2", 250, 3200, false),
     rent("Renta 3", 240, 3400, true), rent("Renta 4", 230, 3100, true),
-  ]);
+  ], null);
   const payload = {
     ...DEFAULT_INCOME,
     method: "anualidad" as const,
@@ -118,4 +121,21 @@ test("TCH: «Tasa a utilizar» and the rounding are kept, the rent comes from th
   const again = await getIncomeCalculation(fixture.publicId, fixture.organizationId);
   assert.deepEqual([again.rateFromMarket, again.weightedRate, again.rounding], [null, null, null]);
   assert.ok(Math.abs((await stored(fixture.publicId)) - 701129.03) < 0.01);
+});
+
+test("the gross rent is the rent market's monthly rent with the rounding chosen there (video 8.14, 04:10)", async () => {
+  // 236 m² × $130 = $30,680, rounded to thousands in the rent market: $31,000.
+  const fixture = await rentMarket(236, 130, [
+    rent("Renta 1", 300, 40000, false), rent("Renta 2", 325, 34000, false),
+    rent("Renta 3", 250, 32000, true), rent("Renta 4", 280, 33500, true),
+  ], -3);
+  await saveIncomeCalculation(fixture.publicId, fixture.user, {
+    ...DEFAULT_INCOME,
+    rentableUnits: [{ description: "Superficie rentable", area: null, unitRent: null }],
+    deductions: [{ concept: "Todas", rate: 0.31 }],
+    appliedRate: 0.08,
+  });
+  const income = await getIncomeCalculation(fixture.publicId, fixture.organizationId);
+  assert.equal(income.rentMarket.concludedMonthlyRent, 31000);
+  assert.ok(Math.abs((await stored(fixture.publicId)) - 31000 * 0.69 * 12 / 0.08) < 0.01);
 });

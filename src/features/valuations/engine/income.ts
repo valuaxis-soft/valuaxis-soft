@@ -63,6 +63,14 @@ export type IncomeApproachInput = {
   rentMarket?: HomologationInput;
   /** $/m²/month the appraiser adopts; the homologated mean when missing. */
   adoptedUnitRent?: number;
+  /**
+   * The monthly rent concluded in the rent market, rounded as the appraiser
+   * rounded it there (video 8.14, 04:10: he concluded $31,000; the income
+   * approach took 236 m² × $130 = $30,680). With one rentable surface that
+   * inherits the market's area and rent it is the gross monthly rent, as
+   * costs take the market's value.
+   */
+  adoptedMonthlyRent?: number;
   rentableUnits: { description: string; area: number; unitRent?: number }[];
   deductions: { concept: string; rate: number }[];
   /** How the capitalized value is rounded (Excel ROUND digits); absent or null, as the books: not rounded. */
@@ -73,6 +81,8 @@ export type IncomeApproachInput = {
     rates?: readonly number[];
     /** Rate the appraiser applies; the rate from the table when missing. */
     appliedRate?: number;
+    /** The name of each criterion rated, for the trace; RATE_TABLE_CRITERIA when missing. */
+    criteria?: readonly string[];
   };
 };
 
@@ -130,7 +140,17 @@ export function computeIncomeApproach(input: IncomeApproachInput, config: Engine
   });
 
   let grossMonthlyRent = 0;
-  input.rentableUnits.forEach((unit, index) => {
+  const concluded = input.adoptedMonthlyRent !== undefined && input.rentableUnits.length === 1 && input.rentableUnits[0].unitRent === undefined;
+  if (concluded) {
+    grossMonthlyRent += trace.record({
+      key: "ingresos.rentaTipo1",
+      label: `Renta mensual, ${input.rentableUnits[0].description}`,
+      formula: "renta mensual concluida en el mercado de rentas",
+      inputs: { superficieRentable: input.rentableUnits[0].area, rentaUnitaria: unitRent },
+      value: input.adoptedMonthlyRent!,
+    });
+  }
+  if (!concluded) input.rentableUnits.forEach((unit, index) => {
     const rent = unit.unitRent ?? unitRent;
     grossMonthlyRent += trace.record({
       key: `ingresos.rentaTipo${index + 1}`,
@@ -173,7 +193,7 @@ export function computeIncomeApproach(input: IncomeApproachInput, config: Engine
         label: "Tasa resultante de la tabla",
         formula: "Σ (calificaciones de la columna × tasa / criterios × 100) / 100",
         inputs: Object.fromEntries(input.capitalization.ratingColumns.map((column, index) => [
-          RATE_TABLE_CRITERIA[index] ?? `criterio ${index + 1}`,
+          (input.capitalization.criteria ?? RATE_TABLE_CRITERIA)[index] || `criterio ${index + 1}`,
           (input.capitalization.rates ?? RATE_TABLE_RATES)[column],
         ])),
         value: rateFromTable(input.capitalization.ratingColumns, input.capitalization.rates ?? RATE_TABLE_RATES),

@@ -221,7 +221,12 @@ test("the TCH income payload passes for each method", () => {
 test("rating columns: one per criterion, each a valid rate index or empty", () => {
   accepts(incomeInputSchema, { ...income, ratingColumns: RATE_TABLE_CRITERIA.map(() => null) });
   accepts(incomeInputSchema, { ...income, ratingColumns: RATE_TABLE_CRITERIA.map(() => RATE_TABLE_RATES.length - 1) });
-  assert.ok(issues(incomeInputSchema, { ...income, ratingColumns: income.ratingColumns.slice(1) }).some((issue) => issue.startsWith("ratingColumns")));
+  // As many as the criteria of the appraiser's table (video 8.14, 24:50: «Topografía»), up to forty.
+  accepts(incomeInputSchema, { ...income, ratingColumns: [...income.ratingColumns, 0] });
+  assert.ok(issues(incomeInputSchema, { ...income, ratingColumns: Array(41).fill(null) }).some((issue) => issue.startsWith("ratingColumns")));
+  // His table: a key and the concept with its six options per row.
+  accepts(incomeInputSchema, { ...income, rateTable: [{ key: "topografia", cells: ["TOPOGRAFÍA", "PLANA", "", "", "", "", ""] }] });
+  assert.ok(issues(incomeInputSchema, { ...income, rateTable: [{ key: "topografia", cells: ["TOPOGRAFÍA"] }] }).some((issue) => issue.startsWith("rateTable")));
   assert.ok(issues(incomeInputSchema, { ...income, ratingColumns: [...income.ratingColumns.slice(1), RATE_TABLE_RATES.length] })
     .some((issue) => issue.startsWith(`ratingColumns.${RATE_TABLE_CRITERIA.length - 1}`)));
   assert.ok(issues(incomeInputSchema, { ...income, ratingColumns: [1.5, ...income.ratingColumns.slice(1)] }).some((issue) => issue.startsWith("ratingColumns.0")));

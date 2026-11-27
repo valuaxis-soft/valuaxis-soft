@@ -106,7 +106,8 @@ import { marketMemoryKey, sessionStore, storeMarketScroll, storeMarketType, stor
 import { ComparableDialog, type PendingImages } from "./comparable-dialog";
 import { ComparableReviewDialog } from "./comparable-review-dialog";
 import { REVIEW_TONE_STYLES } from "./review-status-style";
-import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
+import { SurfacePowerSelect } from "./calculation-controls";
+import { RoundingMenu } from "./rounding-menu";
 import { CalculationPrecisionSummary } from "./calculation-precision-control";
 import { FactorJustificationCapture } from "./factor-justification-capture";
 import { factorDecimals } from "@/features/valuations/calculation/calculation-precision";
@@ -982,6 +983,18 @@ function MarketTypePanel(props: {
   const fields = characteristicFieldsOf(liveSettings);
   // Where each datum sits in the tables of the page (market-document.ts): it is typed there.
   const captureAt = marketCaptureColumns({ settings: liveSettings, comparables });
+  // The value's bar under the table of the adopted value: «Valor comparativo» with its rounding as an option of its own.
+  const valueAt = { table: captureAt.adopted.table, box: "valor.valor" };
+  const valueWithRounding = (
+    <RoundingMenu
+      label="valor de mercado"
+      value={liveSettings.rounding === undefined ? DEFAULT_ENGINE_CONFIG.rounding.market.comparativeValue : liveSettings.rounding}
+      readOnly={readOnly}
+      onChange={(rounding) => patchSettings({ rounding })}
+    >
+      <span className="rounded-sm bg-muted/70 px-1.5 py-1 text-right font-semibold tabular-nums" data-market-value="">{result ? money(result.value) : ""}</span>
+    </RoundingMenu>
+  );
   // Factors rated from the catalog, whose subject rating is chosen once for all comparables.
   const ratedSlots = calculation.settings.factorSlots.filter((slot) =>
     !slot.key && !COMPUTED_FACTORS.has(slot.type) && !DIRECT_FACTORS.has(slot.type) && optionsFor(catalog, slot.type).length > 0);
@@ -1365,15 +1378,8 @@ function MarketTypePanel(props: {
           <div className="grid gap-2 rounded-md border bg-background p-2" data-market-statistics="">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h4 className="text-sm font-semibold">Valores y estadísticas</h4>
-              <fieldset disabled={readOnly} className="flex items-center gap-2 text-sm">
-                <label htmlFor="market-rounding" className="text-xs text-muted-foreground">Redondeo del valor</label>
-                <RoundingSelect
-                  id="market-rounding"
-                  label="Redondeo del valor"
-                  value={liveSettings.rounding === undefined ? DEFAULT_ENGINE_CONFIG.rounding.market.comparativeValue : liveSettings.rounding}
-                  onChange={(rounding) => patchSettings({ rounding })}
-                />
-              </fieldset>
+              {/* The rounding is an option of the value itself, in its bar under the table (video 8.14, 06:50); here only while that bar is not on screen. */}
+              <CaptureSlot at={valueAt} fallback>{result ? valueWithRounding : null}</CaptureSlot>
             </div>
             <StatisticsTable
               choice={statisticsChoice}

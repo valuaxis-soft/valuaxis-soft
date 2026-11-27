@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { formulaOfText } from "@/features/valuations/calculation/captured-formulas";
-import { numericFieldProblem, parseDecimal, percentAsNumberText } from "@/features/valuations/calculation/free-formula";
+import { numericFieldProblem, parseDecimal, percentAsNumberText, percentUnitsText } from "@/features/valuations/calculation/free-formula";
 import { useFormulaEditing, useFormulaField } from "@/features/valuations/components/editor/formula-editing";
 import { isFormulaText } from "@/features/valuations/services/formula-references";
 import {
@@ -66,8 +66,14 @@ const UNREAD_FORMULA_MESSAGE = "Esta fórmula no se pudo calcular: corrígela o 
  * receives what the field keeps, as from a typed change.
  */
 export function FormulaInput({
-  value, className, title, onFocus, onBlur, onChange, onKeyDown, grouping = false, ...props
-}: ComponentProps<typeof Input> & { value: string; grouping?: boolean }) {
+  value, className, title, onFocus, onBlur, onChange, onKeyDown, grouping = false, percentUnits = false, ...props
+}: ComponentProps<typeof Input> & {
+  value: string;
+  grouping?: boolean;
+  /** The field is written in percent ("3" for 3 %): "3 %" keeps the 3, not the 0.03 of a plain field. */
+  percentUnits?: boolean;
+}) {
+  const plainNumber = percentUnits ? percentUnitsText : percentAsNumberText;
   const [editing, setEditing] = useState(false);
   const { index } = useFormulaEditing();
   const owner = useContext(LiveFormulaOwnerContext);
@@ -91,7 +97,7 @@ export function FormulaInput({
       if (!isFormulaText(text)) {
         // A formula erased or written over with a number (video 7.3, 4:13: «Frente del sujeto» came back):
         // the panel saves it on the blur that follows it, as an applied formula.
-        const plain = percentAsNumberText(text);
+        const plain = plainNumber(text);
         appliedRef.current = plain;
         send(plain);
         return;
@@ -175,7 +181,7 @@ export function FormulaInput({
       }}
       onBlur={(event) => {
         if (writing) field.onBlur(event);
-        else if (value.trim().endsWith("%")) send(percentAsNumberText(value));
+        else if (value.trim().endsWith("%")) send(plainNumber(value));
         setEditing(false);
         onBlur?.(event);
       }}

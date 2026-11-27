@@ -16,23 +16,36 @@ import { recomputeConclusion } from "./conclusion.service";
 import { loadRentMarket } from "./market.service";
 import { toMarketEngineInput } from "./market-types";
 import type { IncomeInputPayload } from "./income-schemas";
-import { DEFAULT_INCOME, INCOME_PERCENT_FIELDS, incomeEngineConfig, toIncomeEngineInput, type IncomeCalculationDto, type IncomeInputDto } from "./income-types";
+import {
+  DEFAULT_INCOME,
+  INCOME_PERCENT_FIELDS,
+  RATE_TABLE_OPTIONS,
+  incomeEngineConfig,
+  rateTableOf,
+  ratingColumnsFor,
+  toIncomeEngineInput,
+  type IncomeCalculationDto,
+  type IncomeInputDto,
+  type RateTableRowDto,
+} from "./income-types";
 
 const CALCULATION_KEY = "MOTOR.INGRESOS";
 
-const EMPTY_RENT_MARKET: IncomeCalculationDto["rentMarket"] = { adoptedUnitRent: null, subjectArea: null, comparables: [], homologation: null };
+const EMPTY_RENT_MARKET: IncomeCalculationDto["rentMarket"] = { adoptedUnitRent: null, concludedMonthlyRent: null, subjectArea: null, comparables: [], homologation: null };
 
 async function rentMarket(tx: Tx, versionId: number): Promise<IncomeCalculationDto["rentMarket"]> {
   const [market, rents] = await Promise.all([
     tx.enfoqueMercado.findFirst({
       where: { IdVersionAvaluo: versionId, tipoComparable: { SClave: "INMUEBLE_RENTA" } },
-      select: { NValorHomologadoUtilizado: true, NSuperficieSujeto: true },
+      select: { NValorHomologadoUtilizado: true, NSuperficieSujeto: true, NValorMercado: true },
     }),
     loadRentMarket(tx, versionId),
   ]);
   const homologation = toMarketEngineInput(rents);
   return {
     adoptedUnitRent: decimal(market?.NValorHomologadoUtilizado),
+    // The rent market's value: the subject's monthly rent, rounded as the appraiser rounded it there.
+    concludedMonthlyRent: decimal(market?.NValorMercado),
     subjectArea: decimal(market?.NSuperficieSujeto),
     comparables: rents.comparables.map((row) => ({ reference: row.reference, location: row.location, area: row.area, price: row.price })),
     homologation: homologation.ok ? homologation.input : null,
@@ -41,6 +54,15 @@ async function rentMarket(tx: Tx, versionId: number): Promise<IncomeCalculationD
 
 const optionalRate = (value: unknown) => (typeof value === "number" && Number.isFinite(value) ? value : null);
 
+/** The rate table as saved: rows with a key and the concept and six options; anything else, the books' table. */
+function storedRateTable(value: unknown): RateTableRowDto[] | null {
+  if (!Array.isArray(value) || !value.length) return null;
+  const rows = value.filter((row): row is RateTableRowDto =>
+    typeof row === "object" && row !== null && typeof (row as RateTableRowDto).key === "string"
+    && Array.isArray((row as RateTableRowDto).cells) && (row as RateTableRowDto).cells.every((cell) => typeof cell === "string"));
+  return rows.length === value.length ? rows.map((row) => ({ key: row.key, cells: Array.from({ length: RATE_TABLE_OPTIONS + 1 }, (_, index) => row.cells[index] ?? "") })) : null;
+}
+
 async function loadInput(tx: Tx, versionId: number) {
   const approach = await tx.enfoqueIngreso.findUnique({
     where: { IdVersionAvaluo: versionId },
@@ -48,6 +70,8 @@ async function loadInput(tx: Tx, versionId: number) {
   });
   if (!approach) return { input: { ...DEFAULT_INCOME, formulas: {} }, configured: false };
   const configuration = asRecord(approach.JConfiguracion) as Partial<IncomeInputDto>;
+  const rateTable = storedRateTable(configuration.rateTable);
+  const split = configuration.deductionsSplit;
   return {
     configured: true,
     input: {
@@ -56,7 +80,10 @@ async function loadInput(tx: Tx, versionId: number) {
       marketRate: { ...DEFAULT_INCOME.marketRate, ...configuration.marketRate },
       rentableUnits: configuration.rentableUnits?.length ? configuration.rentableUnits : DEFAULT_INCOME.rentableUnits,
       deductions: approach.deduccionesIngreso.map((row) => ({ concept: row.SConcepto, rate: decimal(row.NPorcentaje) })),
-      ratingColumns: configuration.ratingColumns ?? DEFAULT_INCOME.ratingColumns,
+      // As many ratings as the criteria of the table.
+      ratingColumns: ratingColumnsFor(rateTableOf({ rateTable }), configuration.ratingColumns ?? DEFAULT_INCOME.ratingColumns),
+      rateTable,
+      deductionsSplit: typeof split === "number" && Number.isInteger(split) && split > 0 ? split : null,
       appliedRate: decimal(approach.NTasaMercado),
       rateFromMarket: optionalRate(configuration.rateFromMarket),
       weightedRate: optionalRate(configuration.weightedRate),
@@ -88,6 +115,8 @@ export async function saveIncomeCalculation(publicId: string, user: AuthUser, pa
       marketRate: payload.marketRate,
       rentableUnits: payload.rentableUnits,
       ratingColumns: payload.ratingColumns,
+      rateTable: payload.rateTable ?? null,
+      deductionsSplit: payload.deductionsSplit ?? null,
       rateFromMarket: payload.rateFromMarket ?? null,
       weightedRate: payload.weightedRate ?? null,
       rounding: payload.rounding ?? null,

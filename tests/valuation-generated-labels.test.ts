@@ -1,7 +1,7 @@
 /**
  * The labels of the boxes and concepts the calculation writes in the
  * dictamen, renamed by the appraiser ("Valor físico de reposición" as "Valor
- * neto de reposición"), and the rent market's dispersion in the income approach.
+ * neto de reposición"), and the income approach's, which no longer prints the rent market's dispersion.
  */
 import assert from "node:assert/strict";
 import { test } from "node:test";
@@ -14,19 +14,17 @@ import {
   summaryCaptionKey,
   summaryRowKey,
   withBoxLabel,
-  withConceptLabel,
 } from "../src/features/valuations/calculation/generated-table-layout";
 import { incomeDocumentBlocks } from "../src/features/valuations/calculation/income-document";
-import { DEFAULT_INCOME, rentMarketStats, toIncomeEngineInput, type IncomeCalculationDto } from "../src/features/valuations/calculation/income-types";
+import { DEFAULT_INCOME, toIncomeEngineInput, type IncomeCalculationDto } from "../src/features/valuations/calculation/income-types";
 import { replaceGeneratedBlocks } from "../src/features/valuations/calculation/market-document";
 import { DEFAULT_ENGINE_CONFIG } from "../src/features/valuations/engine/config";
 import { computeCostApproach } from "../src/features/valuations/engine/costs";
 import { SURFACE_SLOT, type CapturedFactor } from "../src/features/valuations/engine/factors";
 import { computeIncomeApproach } from "../src/features/valuations/engine/income";
-import { homologate, type ComparableInput } from "../src/features/valuations/engine/market";
+import type { ComparableInput } from "../src/features/valuations/engine/market";
 import { Trace } from "../src/features/valuations/engine/trace";
-import type { AppSection, Block, ContentLayoutRowV2, TableContent } from "../src/features/valuations/model";
-import { resolveContentLayout, setContentRowTagStyle } from "../src/features/valuations/services/content-layout";
+import type { AppSection, Block, TableContent } from "../src/features/valuations/model";
 import { ensureTableV2, type TableSummaryBox } from "../src/features/valuations/services/table";
 import { serializeTableForSave } from "../src/features/valuations/services/table-persistence";
 
@@ -129,7 +127,7 @@ test("a renamed box label follows its row when a row before it comes and goes, a
   assert.equal(payload.schema?.summaryBoxes?.[0].rows.at(-1)?.label, "VALOR DE MERCADO:");
 });
 
-/* ── Concepts of the income approach ─────────────────────────────── */
+/* ── The income approach: its labels are those of its tables ─────── */
 
 const fixed = (key: string, value: number): CapturedFactor => ({ key, label: key, value });
 const rent = (id: string, price: number, area: number): ComparableInput => ({ id, price, area, factors: [fixed("negociacion", 0.95), SURFACE_SLOT, fixed("zona", id === "3" ? 1.05 : 1)] });
@@ -156,100 +154,27 @@ function incomeBlocks(calculation: IncomeCalculationDto) {
   return incomeDocumentBlocks(calculation, computeIncomeApproach(input.input, DEFAULT_ENGINE_CONFIG));
 }
 
-test("a concept of the income approach printed under the appraiser's name keeps it when the value changes", () => {
+test("the label the appraiser gives the income value's bar stays when the value changes", () => {
   const written = incomeBlocks(income());
-  const result = written.find((block) => block.id === "motor-ingresos-resultado")!;
-  assert.equal(result.concepts[0].id, "motor-ingresos-resultado-valor");
-  const renamed = { ...result, concepts: result.concepts.map((concept) => withConceptLabel(concept, "Valor por ingresos")) };
-  assert.deepEqual([renamed.concepts[0].label, renamed.concepts[0].generatedLabel], ["Valor por ingresos", "Valor por capitalización de rentas"]);
-
   const owns = (block: Block) => block.id.startsWith("motor-ingresos");
+  const resultTable = (blocks: Block[]) => blocks[0].apartados.find((apartado) => apartado.id.endsWith("-resultado"))!.tables[0];
+  const box = ensureTableV2(resultTable(written)).schema!.summaryBoxes![0];
+  const key = summaryRowKey(box, box.rows[0], 0);
+  const renamed = applyTableLayout(ensureTableV2(resultTable(written)), withBoxLabel(layoutOf(resultTable(written)), key, "Valor por ingresos:"));
   const section: AppSection = {
     id: "ingresos", label: "", title: "INGRESOS", sourceFile: "", enabled: true, required: false,
-    blocks: written.map((block) => (block.id === result.id ? renamed : block)),
+    blocks: [{ ...written[0], apartados: written[0].apartados.map((apartado) => (apartado.id.endsWith("-resultado") ? { ...apartado, tables: [renamed as unknown as TableContent] } : apartado)) }],
   };
   const next = replaceGeneratedBlocks(section, owns, incomeBlocks(income({ appliedRate: 0.09 })));
-  const concept = next.blocks.find((block) => block.id === "motor-ingresos-resultado")!.concepts[0];
-  assert.equal(concept.label, "Valor por ingresos");
-  assert.equal(concept.generatedLabel, "Valor por capitalización de rentas");
-  assert.notEqual(concept.value, renamed.concepts[0].value, "the value is the new calculation's");
-
-  // The same name as the calculation's, or none, is no rename.
-  const { generatedLabel: _renamed, ...plain } = concept;
-  assert.deepEqual(withConceptLabel(concept, ""), { ...plain, label: "Valor por capitalización de rentas" });
-  assert.equal(withConceptLabel(concept, "Valor por capitalización de rentas").generatedLabel, undefined);
+  const rows = boxRows(resultTable(next.blocks), "valor")!;
+  assert.equal(rows[0][0], "Valor por ingresos:");
+  assert.notEqual(rows[0][1], box.rows[0].value, "the value is the new calculation's");
 });
 
-test("the spacing and the row style the appraiser gives a concept of the income approach stay when the value changes", () => {
-  const written = incomeBlocks(income());
-  const result = written.find((block) => block.id === "motor-ingresos-resultado")!;
-  const conceptId = result.concepts[0].id;
-  const spaced: Block = {
-    ...result,
-    concepts: result.concepts.map((concept) => (concept.id === conceptId ? { ...concept, spacingBefore: 2, spacingAfter: 1 } : concept)),
-  };
-  // Labels ("Renglón") go on a row of several concepts: the dispersion of the rent market.
-  const dispersion = written.find((block) => block.id === "motor-ingresos-dispersion")!;
-  const shared = resolveContentLayout(dispersion).rows.find((row) => row.columns.length > 1)!;
-  const labelled = shared.columns[0].items[0].id;
-  const holds = (row: ContentLayoutRowV2) => row.columns.some((column) => column.items.some((entry) => entry.id === labelled));
-  const styled: Block = { ...dispersion, contentLayout: setContentRowTagStyle(resolveContentLayout(dispersion), shared.id, "shaded") };
-
-  const owns = (block: Block) => block.id.startsWith("motor-ingresos");
-  const changed = new Map([[result.id, spaced], [dispersion.id, styled]]);
-  const section: AppSection = {
-    id: "ingresos", label: "", title: "INGRESOS", sourceFile: "", enabled: true, required: false,
-    blocks: written.map((block) => changed.get(block.id) ?? block),
-  };
-  const next = replaceGeneratedBlocks(section, owns, incomeBlocks(income({ appliedRate: 0.09 })));
-  const rewritten = next.blocks.find((block) => block.id === "motor-ingresos-resultado")!;
-  const concept = rewritten.concepts.find((item) => item.id === conceptId)!;
-  assert.notEqual(concept.value, result.concepts[0].value, "the value is the new calculation's");
-  assert.deepEqual([concept.spacingBefore, concept.spacingAfter], [2, 1]);
-  const rewrittenDispersion = next.blocks.find((block) => block.id === dispersion.id)!;
-  assert.equal(resolveContentLayout(rewrittenDispersion).rows.find(holds)!.tagStyle, "shaded");
-
-  // The blocks the appraiser left alone are written as the calculation gives them.
-  for (const block of next.blocks.filter((item) => owns(item) && !changed.has(item.id))) {
-    assert.equal(block.contentLayout, undefined);
-    assert.ok(block.concepts.every((item) => !item.spacingBefore && !item.spacingAfter));
+test("the rent market's dispersion stays in the rent market: the income approach does not print it (video 8.14, 01:17)", () => {
+  for (const calculation of [income(), income({ method: "mercado", marketRate: { negotiation: 0, vacancy: 0, salePrices: { 1: 500000, 2: 480000, 3: 520000, 4: 450000 } } })]) {
+    const blocks = incomeBlocks(calculation);
+    assert.deepEqual(blocks.map((block) => block.id), ["motor-ingresos-enfoque"]);
+    assert.ok(!blocks[0].apartados.some((apartado) => /dispersi/i.test(apartado.id) || /DISPERSIÓN/.test(apartado.title)));
   }
-});
-
-/* ── Dispersion of the rent market in the income approach ─────────── */
-
-test("the income approach shows the rent market's initial and final dispersion and its lowest and highest rents", () => {
-  const calculation = income();
-  const stats = rentMarketStats(calculation, null);
-  assert.ok(stats);
-  // The same homologation the rent market makes.
-  const expected = homologate(calculation.rentMarket.homologation!, DEFAULT_ENGINE_CONFIG.surfaceOrientation.income, new Trace(), "ingresos.rentas").stats;
-  assert.deepEqual(stats, expected);
-  assert.equal(stats.offerMin, 3200 / 250);
-  assert.equal(stats.offerMax, 3400 / 240);
-  assert.equal(stats.initialDispersion, (3400 / 240) / (3200 / 250));
-  assert.equal(stats.dispersion, stats.max / stats.min);
-
-  const blocks = incomeBlocks(calculation);
-  assert.equal(blocks[0].id, "motor-ingresos-dispersion", "before the capitalization");
-  assert.equal(blocks[0].title, "DISPERSIÓN DEL MERCADO DE RENTAS");
-  assert.deepEqual(blocks[0].concepts.map((concept) => concept.label), [
-    "Mínimo de oferta", "Máximo de oferta", "Dispersión inicial", "Mínimo homologado", "Máximo homologado", "Dispersión final",
-  ]);
-  assert.equal(blocks[0].concepts[0].value, "$12.80 /m²/mes");
-  assert.equal(blocks[0].concepts[2].value, stats.initialDispersion.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-  assert.equal(blocks[0].concepts[5].value, stats.dispersion.toLocaleString("es-MX", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-
-  // The market-rate method homologates the rents itself: the same statistics.
-  const marketRate = income({ method: "mercado", marketRate: { negotiation: 0, vacancy: 0, salePrices: { 1: 500000, 2: 480000, 3: 520000, 4: 450000 } } });
-  const input = toIncomeEngineInput(marketRate);
-  assert.ok(input.ok);
-  const result = computeIncomeApproach(input.input, DEFAULT_ENGINE_CONFIG);
-  assert.deepEqual(rentMarketStats(marketRate, result), result.rentMarket!.stats);
-  assert.deepEqual(rentMarketStats(marketRate, result), stats);
-
-  // Without rent comparables there is nothing to show.
-  const withoutMarket = income({ rentMarket: { adoptedUnitRent: 14, subjectArea: 160, comparables: [], homologation: null } });
-  assert.equal(rentMarketStats(withoutMarket, null), null);
-  assert.ok(!incomeBlocks(withoutMarket).some((block) => block.id === "motor-ingresos-dispersion"));
 });

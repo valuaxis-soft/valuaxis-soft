@@ -563,6 +563,18 @@ export function percentAsNumberText(text: string): string {
   return value === null ? text : String(Number(value.toPrecision(12)));
 }
 
+/**
+ * A field that is written in percent ("3" for 3 %): "3 %" or "3%" is the 3
+ * typed with its sign (video 8.14, 22:14: «aquí ya está como porcentaje… 3»),
+ * not the 0.03 a plain field reads; anything else stays as typed.
+ */
+export function percentUnitsText(text: string): string {
+  const typed = text.trim();
+  if (!typed.endsWith("%") || typed.startsWith("=")) return text;
+  const value = parseDecimal(typed);
+  return value === null ? text : String(Number((value * 100).toPrecision(12)));
+}
+
 /** "1,260,000.50", "$ 9000" or "=5*10000" → number; empty or invalid → null. */
 export function parseDecimal(value: string): number | null {
   const trimmed = value.trim();

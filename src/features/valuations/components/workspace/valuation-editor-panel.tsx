@@ -412,10 +412,10 @@ export function ValuationEditorPanel(props: {
       onMoveBlock={props.onMoveBlock}
       onUpdateBlock={(patch) => props.onUpdateBlock(section.id, block.id, patch)}
       onUpdateTable={(tableId, updater, apartadoId) => props.onUpdateTable(section.id, block.id, tableId, updater, apartadoId)}
-      onAddTable={() => props.onAddTable(section.id, block.id)}
-      onAddTableColumn={(tableId) => props.onAddTableColumn(section.id, block.id, tableId)}
-      onAddTableRow={(tableId) => props.onAddTableRow(section.id, block.id, tableId)}
-      onRemoveTable={(tableId) => props.onRemoveTable(section.id, block.id, tableId)}
+      onAddTable={(apartadoId) => props.onAddTable(section.id, block.id, apartadoId)}
+      onAddTableColumn={(tableId, apartadoId) => props.onAddTableColumn(section.id, block.id, tableId, apartadoId)}
+      onAddTableRow={(tableId, apartadoId) => props.onAddTableRow(section.id, block.id, tableId, apartadoId)}
+      onRemoveTable={(tableId, apartadoId) => props.onRemoveTable(section.id, block.id, tableId, apartadoId)}
     />
   ) : (
     <SortableBlockEditor
@@ -1244,12 +1244,13 @@ function GeneratedBlockEditor({
   onMoveBlock: (sectionId: string, blockId: string, direction: -1 | 1) => void;
   onUpdateBlock: (patch: Partial<Block>) => void;
   onUpdateTable: (tableId: string, updater: (table: TableContent) => TableContent, apartadoId?: string) => void;
-  /** «Agregar → Tabla»: a table of the appraiser's own in the block, kept when the calculation writes it again. */
-  onAddTable: () => void;
-  onAddTableColumn: (tableId: string) => void;
-  onAddTableRow: (tableId: string) => void;
-  onRemoveTable: (tableId: string) => void;
+  /** «Agregar → Tabla»: a table of the appraiser's own in the block, or in one of its subbloques; kept when the calculation writes it again. */
+  onAddTable: (apartadoId?: string) => void;
+  onAddTableColumn: (tableId: string, apartadoId?: string) => void;
+  onAddTableRow: (tableId: string, apartadoId?: string) => void;
+  onRemoveTable: (tableId: string, apartadoId?: string) => void;
 }) {
+  const confirmDelete = useConfirmDelete();
   // The block's own tables are laid out as they print (GeneratedBlockTables); a subbloque's, one after another.
   const tables = block.apartados.flatMap((apartado) => apartado.tables.map((table) => ({ table, apartadoId: apartado.id })));
   // A block the dictamen does not have yet is only captured in: hiding, moving and formatting it come with its first result.
@@ -1355,7 +1356,7 @@ function GeneratedBlockEditor({
         conceptControl={null}
         onAddImage={() => undefined}
         onAddApartado={() => undefined}
-        onAddTable={onAddTable}
+        onAddTable={() => onAddTable()}
         subBlockLabel={ADD_SUBBLOCK_LABEL}
       />
       {market ? (
@@ -1387,8 +1388,47 @@ function GeneratedBlockEditor({
       ) : null}
       {block.enabled || capture ? block.apartados.filter((apartado) => tables.some((item) => item.apartadoId === apartado.id)).map((apartado) => (
         <div key={apartado.id} className="grid min-w-0 gap-1.5" data-generated-apartado={apartado.id}>
-          {/* The apartado's title over its tables, as the dictamen prints it. */}
-          {apartado.title ? <h4 className="text-sm font-semibold uppercase text-foreground/80">{apartado.title}</h4> : null}
+          {/* The apartado's title over its tables, with its number as the dictamen prints it (video 8.14, 12:05: «X.1, X.2»). */}
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            {apartado.title ? (
+              <h4 className="text-sm font-semibold uppercase text-foreground/80">
+                {[/^[A-Z]\)\s/.test(apartado.title.trim()) ? "" : apartadoDisplayLabel(block, getBlockFlowApartadoOrder(block), apartado.id), apartado.title].filter(Boolean).join(" ")}
+              </h4>
+            ) : null}
+            {!readOnly ? (
+              <span className="ml-auto flex items-center gap-1">
+                {/* A table of his own in this subbloque (a second table of deductions, notes), kept when the calculation writes it again. */}
+                <Button type="button" size="xs" variant="ghost" onClick={() => onAddTable(apartado.id)} data-generated-apartado-add-table="">
+                  <Plus data-icon="inline-start" /> Tabla
+                </Button>
+                {/* Deleted, the calculation does not write it again; «Deshacer» brings it back (video 8.14, 01:47). */}
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  variant="ghost"
+                  aria-label={`Eliminar el subbloque ${apartado.title}`.trim()}
+                  title="Eliminar el subbloque"
+                  data-generated-apartado-delete=""
+                  onClick={() => confirmDelete({
+                    ...deleteConfirmation("subblock", apartado.title),
+                    onConfirm: () => {
+                      const before = { apartados: block.apartados, removedApartados: block.removedApartados };
+                      onUpdateBlock({
+                        apartados: block.apartados.filter((item) => item.id !== apartado.id),
+                        removedApartados: [...(block.removedApartados ?? []), apartado.id],
+                      });
+                      toast.success(`«${apartado.title}» ya no sale en el dictamen.`, {
+                        duration: 10_000,
+                        action: { label: "Deshacer", onClick: () => onUpdateBlock(before) },
+                      });
+                    },
+                  })}
+                >
+                  <Trash2 />
+                </Button>
+              </span>
+            ) : null}
+          </div>
           {/* A plain grid (the offer level) is not a table to edit: only the place of what its calculation sets for it. */}
           {capture ? apartado.tables.filter((table) => ensureTableV2(table).schema?.plain).map((table) => (
             <CaptureSlotTarget key={table.id} address={{ table: table.id, part: "before" }} className="grid min-w-0 gap-2 empty:hidden" />
@@ -1401,9 +1441,9 @@ function GeneratedBlockEditor({
             readOnly={sectionReadOnly}
             onLayoutChange={(contentLayout) => onUpdateBlock({ apartados: block.apartados.map((item) => (item.id === apartado.id ? { ...item, contentLayout } : item)) })}
             onUpdateTable={(tableId, updater) => onUpdateTable(tableId, updater, apartado.id)}
-            onAddTableColumn={onAddTableColumn}
-            onAddTableRow={onAddTableRow}
-            onRemoveTable={onRemoveTable}
+            onAddTableColumn={(tableId) => onAddTableColumn(tableId, apartado.id)}
+            onAddTableRow={(tableId) => onAddTableRow(tableId, apartado.id)}
+            onRemoveTable={(tableId) => onRemoveTable(tableId, apartado.id)}
           />
         </div>
       )) : null}

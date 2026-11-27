@@ -244,6 +244,7 @@ function normalizeInitialSections(initialValuation: Pick<ValuationDetail, "secti
       ...(block.coverImageSize ? { coverImageSize: block.coverImageSize } : {}),
       ...(block.valueChart ? { valueChart: true } : {}),
       ...(block.valueTitle ? { valueTitle: block.valueTitle } : {}),
+      ...(block.removedApartados?.length ? { removedApartados: block.removedApartados } : {}),
       apartados: block.subBlocks.map((subBlock) => ({
         id: subBlock.id,
         title: subBlock.title,
