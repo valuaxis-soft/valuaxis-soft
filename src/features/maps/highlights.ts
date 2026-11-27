@@ -129,7 +129,18 @@ export const isMacroZoom = (zoom: number) => Math.round(zoom) <= MACRO_MAX_ZOOM;
 
 export const isMainRoad = (way: Pick<StreetWay, "r">) => way.r <= 2;
 
-/** What the macro croquis shows: the highlighted avenues only. */
+/**
+ * The highest rank of street the generator's map lets touch at this zoom:
+ * every street from zoom 15 (the macro croquis' own: until 26 nov 2026 only
+ * the rank 1–2 avenues could be touched up to zoom 16, and a tertiary
+ * avenue could not be painted, video 8.5, 4:21), down to tertiary at 13 and
+ * 14, the main roads only further out, where a hit line would lie over the next.
+ */
+export function touchableRank(zoom: number) {
+  return zoom >= 15 ? 4 : zoom >= 13 ? 3 : 2;
+}
+
+/** The demonstration's macro view: the highlighted avenues only (the croquis of a valuation draws every highlighted street since 26 nov 2026). */
 export function macroHighlights(items: readonly HighlightedWay[]) {
   return items.filter((item) => isMainRoad(item.way));
 }

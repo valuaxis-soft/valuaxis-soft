@@ -19,6 +19,12 @@ export interface FreeLine {
   color: string;
   weight: number;
   points: LatLon[];
+  /**
+   * The street the line stands for (video 8.5, 4:30): its name prints on the
+   * croquis in a band edged with the line's color, like a highlighted
+   * street's, and moves and turns like one («Letreros»). Absent, no name.
+   */
+  name?: string;
 }
 
 export type FreeLineStyle = Pick<FreeLine, "color" | "weight">;
@@ -31,6 +37,9 @@ export const MAX_LINE_POINTS = 200;
 /** The style of the next line: a dark orange that reads over the street map and the satellite photo. */
 export const DEFAULT_FREE_LINE_STYLE: FreeLineStyle = { color: "#d35400", weight: 5 };
 
+/** A street name, as long as OpenStreetMap's longest. */
+export const MAX_LINE_NAME = 120;
+
 const pointSchema = z.tuple([z.number().finite().min(-90).max(90), z.number().finite().min(-180).max(180)]).readonly();
 
 export const freeLineSchema = z.object({
@@ -38,6 +47,7 @@ export const freeLineSchema = z.object({
   color: z.string().regex(/^#[0-9a-f]{6}$/i),
   weight: z.number().int().min(WEIGHT_RANGE.min).max(WEIGHT_RANGE.max),
   points: z.array(pointSchema).min(2).max(MAX_LINE_POINTS),
+  name: z.string().trim().max(MAX_LINE_NAME).optional(),
 });
 
 export const freeLinesSchema = z.array(freeLineSchema).max(MAX_FREE_LINES);
@@ -96,6 +106,16 @@ export function withLinePoints(lines: readonly FreeLine[], id: string, points: r
 /** One line with another color or width. */
 export function withLineStyle(lines: readonly FreeLine[], id: string, patch: Partial<FreeLineStyle>): FreeLine[] {
   return lines.map((line) => (line.id === id ? { ...line, ...patch } : line));
+}
+
+/** One line with the name of its street as it is being typed (the label trims it); a blank name takes it away. */
+export function withLineName(lines: readonly FreeLine[], id: string, name: string): FreeLine[] {
+  const typed = name.slice(0, MAX_LINE_NAME);
+  return lines.map((line) => {
+    if (line.id !== id) return line;
+    const { name: _previous, ...rest } = line;
+    return typed.trim() ? { ...rest, name: typed } : rest;
+  });
 }
 
 export function withoutLine(lines: readonly FreeLine[], id: string): FreeLine[] {

@@ -70,6 +70,8 @@ export const rateLimits = {
   geocode: createRateLimiter({ limit: 30, windowMs: MINUTE }),
   /** Streets around the pin (etapa 2): each miss of the cache is a call to a public OpenStreetMap mirror. */
   streets: createRateLimiter({ limit: 20, windowMs: MINUTE }),
+  /** Streets of what the croquis generator's map shows: one query of our copy each time the map leaves the box it loaded. */
+  streetsView: createRateLimiter({ limit: 60, windowMs: MINUTE }),
   /** AI assistance: every call is billed by the provider. One person, and the whole firm in a day. */
   aiByUser: createRateLimiter({ limit: 20, windowMs: 10 * MINUTE }),
   aiByOrganization: createRateLimiter({ limit: 200, windowMs: 24 * 60 * MINUTE }),

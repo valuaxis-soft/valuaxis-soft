@@ -30,22 +30,21 @@ import {
   type ComparablePin,
   type CroquisKind,
 } from "../croquis";
-import { croquisStreets, type CroquisPath, type CroquisStreets } from "../croquis-streets";
+import { croquisStreets, frameBounds, type CroquisPath, type CroquisStreets } from "../croquis-streets";
 import { freeLinesOverlaySvg, type FreeLine } from "../free-lines";
 import { hasHighlights, placedStreetLabels, type CroquisLabelPlacement, type StreetHighlights } from "../highlights";
-import type { MapCorner, NorthArrow } from "../map-styles";
-import { NORTH_ARROW_BOX, northArrowPlacement, northArrowSvg } from "../north-arrow-symbols";
+import type { NorthArrow } from "../map-styles";
+import { NORTH_ARROW_HEIGHT, NORTH_ARROW_MARGIN, northArrowBox, northArrowPlacement, northArrowSvg } from "../north-arrow-symbols";
 import { attributionBox, attributionSvg, type BaseMapObstacle, type BaseMapWay } from "../osm-base-map";
 import { STATIC_MAP_SCALE, STATIC_MAP_SIZE, imagePixel } from "../static-map";
-import { withPreferredStreetNames } from "../street-names";
-import type { StreetsAroundDto } from "../streets-osm";
+import { spellingKey, withPreferredStreetNames } from "../street-names";
+import type { StreetWay } from "../streets";
+import { mergedStreetWays, type StreetsAroundDto, type ViewBounds } from "../streets-osm";
 import type { LatLon } from "../types";
 import { baseMapWays, renderBaseMapPng } from "./osm-base.service";
+import { streetsNamedInBox } from "./streets-db";
 import { getStreetsAround } from "./streets.service";
 
-/** Height of the north arrow on the image, in map pixels (the image is at scale 2). */
-const NORTH_ARROW_HEIGHT = 44;
-const NORTH_ARROW_MARGIN = 10;
 
 export interface CroquisRenderInput {
   kind: CroquisKind;
@@ -66,25 +65,52 @@ export interface CroquisRenderInput {
 
 const NO_STREETS: CroquisStreets = { paths: [], labels: [], omitted: [] };
 
+/** The pieces of these streets (by name) crossing a frame. */
+type NamedInFrame = (bounds: ViewBounds, names: readonly string[]) => Promise<StreetWay[]>;
+
+/** From our copy; a copy that cannot answer leaves the streets around the pin alone. */
+async function namedStreetsInFrame(bounds: ViewBounds, names: readonly string[]) {
+  try {
+    return await streetsNamedInBox(bounds, [...new Set(names.map(spellingKey))]);
+  } catch (error) {
+    console.error(`[CROQUIS] highlighted streets of the frame from db failed: ${error instanceof Error ? error.message : String(error)}`);
+    return [];
+  }
+}
+
+const noNamedStreets: NamedInFrame = async () => [];
+
 /**
  * The highlighted streets as the image draws them, on every croquis and on
  * the map of comparables (V7.1-22). One with nothing highlighted asks
- * OpenStreetMap for nothing. The names keep clear of the comparables, the
- * legend and the names placed by hand (FAL-35), and the subject's street
- * takes the address's spelling.
+ * OpenStreetMap for nothing. The geometry is the streets around the pin
+ * plus every piece of the highlighted streets crossing the frame (video
+ * 8.7: a macro frame showed only the pieces within 1 km of the pin). The
+ * names keep clear of the comparables, the legend and the names placed by
+ * hand (FAL-35), the subject's street takes the address's spelling, and the
+ * free lines with a name print it too.
  */
 export async function resolveCroquisStreets(
-  input: Pick<CroquisRenderInput, "kind" | "center" | "zoom" | "subject" | "streets" | "labels" | "pins" | "northArrow" | "address">,
+  input: Pick<CroquisRenderInput, "kind" | "center" | "zoom" | "subject" | "streets" | "labels" | "pins" | "northArrow" | "address" | "lines">,
   streetsAround: (point: LatLon) => Promise<StreetsAroundDto> = getStreetsAround,
+  namedInFrame: NamedInFrame = namedStreetsInFrame,
 ): Promise<CroquisStreets> {
-  if (!hasHighlights(input.streets)) return NO_STREETS;
-  const around = await streetsAround(input.subject);
-  const { ways, highlights } = withPreferredStreetNames(around.ways, input.streets, input.address ?? "");
+  const highlighted = hasHighlights(input.streets);
+  if (!highlighted && !input.lines?.some((line) => line.name?.trim())) return NO_STREETS;
+  let found: readonly StreetWay[] = [];
+  if (highlighted) {
+    const names = [...(input.streets.front ? [input.streets.front] : []), ...input.streets.streets.map((street) => street.name)];
+    const [around, inFrame] = await Promise.all([streetsAround(input.subject), namedInFrame(frameBounds(input.center, input.zoom), names)]);
+    found = mergedStreetWays(around.ways, inFrame);
+  }
+  const { ways, highlights } = withPreferredStreetNames(found, input.streets, input.address ?? "");
   const legend = croquisLegendPlacement(input.center, input.zoom, input.pins, input.northArrow.corner, input.subject);
   const streets = croquisStreets(input.kind, input.center, input.zoom, highlights, ways, input.subject, {
     placements: input.labels,
     pins: pinsInFrame(input.center, input.zoom, input.pins).map((pin) => pin.point),
     legend: legend?.box ?? null,
+    lines: input.lines,
+    corner: input.northArrow.corner,
   });
   return { ...streets, labels: placedStreetLabels(streets.labels, input.labels) };
 }
@@ -103,14 +129,6 @@ function streetPathsSvg(center: LatLon, zoom: number, paths: readonly CroquisPat
     return `<path d="${d}" fill="none" stroke="${color.replace(/[^#0-9a-f]/gi, "")}" stroke-opacity="0.9" stroke-width="${(weight * scale).toFixed(1)}" stroke-linecap="round" stroke-linejoin="round"/>`;
   });
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${items.join("")}</svg>`;
-}
-
-/** The north arrow's box on the image, in map pixels, as `composeCroquisImage` places it (its card overflows the symbol by 4 of its 64 units a side). */
-function northArrowBox(corner: MapCorner) {
-  const unit = NORTH_ARROW_HEIGHT / NORTH_ARROW_BOX.height;
-  const size = { width: NORTH_ARROW_BOX.width * unit + 8 * unit, height: NORTH_ARROW_HEIGHT + 8 * unit };
-  const { left, top } = northArrowPlacement(corner, STATIC_MAP_SIZE, size, NORTH_ARROW_MARGIN);
-  return { x: left, y: top, ...size };
 }
 
 const boxObstacle = ({ x, y, width, height }: { x: number; y: number; width: number; height: number }, margin = 3): BaseMapObstacle => ({
@@ -201,9 +219,15 @@ export interface CroquisSources {
   baseWays: (center: LatLon, zoom: number) => Promise<BaseMapWay[]>;
   /** The named streets around the subject, for the highlighted ones. */
   streetsAround: (point: LatLon) => Promise<StreetsAroundDto>;
+  /** Every piece of the highlighted streets crossing the frame; none when absent. */
+  namedInFrame?: NamedInFrame;
 }
 
-const DEFAULT_SOURCES: CroquisSources = { baseWays: (center, zoom) => baseMapWays(center, zoom), streetsAround: (point) => getStreetsAround(point) };
+const DEFAULT_SOURCES: CroquisSources = {
+  baseWays: (center, zoom) => baseMapWays(center, zoom),
+  streetsAround: (point) => getStreetsAround(point),
+  namedInFrame: namedStreetsInFrame,
+};
 
 /**
  * The croquis as JPEG, without storing it: the highlighted streets, the base
@@ -212,7 +236,7 @@ const DEFAULT_SOURCES: CroquisSources = { baseWays: (center, zoom) => baseMapWay
  * comparables the frame left out (FAL-10: the generator says which).
  */
 export async function renderCroquisImage(input: CroquisRenderInput, sources: CroquisSources = DEFAULT_SOURCES) {
-  const streets = await resolveCroquisStreets(input, sources.streetsAround);
+  const streets = await resolveCroquisStreets(input, sources.streetsAround, sources.namedInFrame ?? noNamedStreets);
   const ways = await sources.baseWays(input.center, input.zoom);
   const base = await renderBaseMapPng(input.center, input.zoom, ways, {
     scale: STATIC_MAP_SCALE,

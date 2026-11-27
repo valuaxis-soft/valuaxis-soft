@@ -168,8 +168,8 @@ test("the subject's pin draws on top: a comparable at the same spot, with its nu
 const CROWD: StreetWay[] = [
   { id: 1, n: "Avenida Adolfo López Mateos Sur", r: 2, g: [[SUBJECT[0] + 40 * METER, SUBJECT[1] - east(700)], [SUBJECT[0] + 40 * METER, SUBJECT[1] + east(700)]] },
   { id: 2, n: "Calle Beristáin de Souza", r: 4, g: [[SUBJECT[0] - 40 * METER, SUBJECT[1] - east(700)], [SUBJECT[0] - 40 * METER, SUBJECT[1] + east(700)]] },
-  { id: 3, n: "Avenida Mariano Otero", r: 2, g: [[SUBJECT[0] - 600 * METER, SUBJECT[1] - east(60)], [SUBJECT[0] + 600 * METER, SUBJECT[1] - east(60)]] },
-  { id: 4, n: "Calle Francisco de Quevedo", r: 4, g: [[SUBJECT[0] - 600 * METER, SUBJECT[1] + east(60)], [SUBJECT[0] + 600 * METER, SUBJECT[1] + east(60)]] },
+  { id: 3, n: "Avenida Mariano Otero", r: 2, g: [[SUBJECT[0] - 1200 * METER, SUBJECT[1] - east(60)], [SUBJECT[0] + 1200 * METER, SUBJECT[1] - east(60)]] },
+  { id: 4, n: "Calle Francisco de Quevedo", r: 4, g: [[SUBJECT[0] - 1200 * METER, SUBJECT[1] + east(60)], [SUBJECT[0] + 1200 * METER, SUBJECT[1] + east(60)]] },
 ];
 
 const crowdHighlights: StreetHighlights = {
@@ -184,8 +184,8 @@ const crowdHighlights: StreetHighlights = {
 };
 
 type Rect = { x: number; y: number; w: number; h: number };
-const rectOf = (label: { name: string; point: readonly [number, number]; angle: number }, zoom: number): Rect => {
-  const box = streetLabelBox(SUBJECT, zoom, { ...label, point: [label.point[0], label.point[1]] });
+const rectOf = (label: { name: string; point: readonly [number, number]; angle: number }, zoom: number, center: readonly [number, number] = SUBJECT): Rect => {
+  const box = streetLabelBox([center[0], center[1]], zoom, { ...label, point: [label.point[0], label.point[1]] });
   // The band turned along its street: the box it takes on the image.
   const radians = (box.angle * Math.PI) / 180;
   const w = Math.abs(box.width * Math.cos(radians)) + Math.abs(box.height * Math.sin(radians));
@@ -197,12 +197,14 @@ const overlap = (a: Rect, b: Rect) => Math.abs(a.x - b.x) < (a.w + b.w) / 2 && M
 test("FAL-35: the names of streets close together no longer pile up, and keep clear of the comparables' pins", () => {
   const zoom = 15;
   const pins = [[SUBJECT[0] + 40 * METER, SUBJECT[1] + east(250)] as [number, number]];
-  const { labels } = croquisStreets("comparables", SUBJECT, zoom, crowdHighlights, CROWD, SUBJECT, { pins });
+  // The frame north of the subject, so the crossing streets have room above the two avenues in the 16:9 image (26 nov 2026).
+  const center: [number, number] = [SUBJECT[0] + 450 * METER, SUBJECT[1]];
+  const { labels } = croquisStreets("comparables", center, zoom, crowdHighlights, CROWD, SUBJECT, { pins });
   assert.equal(labels.length, 4);
   assert.equal(labels[0].name, "Calle Beristáin de Souza", "the front street is placed first");
-  const rects = labels.map((label) => rectOf(label, zoom));
+  const rects = labels.map((label) => rectOf(label, zoom, center));
   for (let i = 0; i < rects.length; i += 1) for (let j = i + 1; j < rects.length; j += 1) assert.equal(overlap(rects[i], rects[j]), false, `${labels[i].name} / ${labels[j].name}`);
-  const pin = imagePixel(SUBJECT, zoom, pins[0]);
+  const pin = imagePixel(center, zoom, pins[0]);
   for (const rect of rects) assert.equal(overlap(rect, { x: pin.x + 16, y: pin.y, w: 56, h: 22 }), false, "no name over the comparable");
 });
 

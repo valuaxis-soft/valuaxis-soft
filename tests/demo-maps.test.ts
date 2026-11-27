@@ -237,7 +237,7 @@ test("the croquis image URL carries the center, zoom, red pin, clean-map styles 
   assert.equal(url.origin + url.pathname, "https://maps.googleapis.com/maps/api/staticmap");
   assert.equal(url.searchParams.get("center"), "20.635400,-103.403400");
   assert.equal(url.searchParams.get("zoom"), "17");
-  assert.equal(url.searchParams.get("size"), "640x400");
+  assert.equal(url.searchParams.get("size"), "640x360");
   assert.ok(url.searchParams.getAll("markers").includes("color:red|20.634420,-103.402390"), "the pin stays on the subject when the frame moves");
   assert.deepEqual(url.searchParams.getAll("style").slice(0, 3), ["feature:poi|visibility:off", "feature:poi.business|visibility:off", "feature:transit|visibility:off"]);
   const paths = url.searchParams.getAll("path");
@@ -251,7 +251,7 @@ test("the croquis image URL carries the center, zoom, red pin, clean-map styles 
 test("street names are laid over the image where the point falls, or not at all when it is outside", () => {
   const middle = imagePosition(SUBJECT_START, 17, SUBJECT_START);
   assert.deepEqual(middle, { x: 0.5, y: 0.5 });
-  // 0.001° north and east: up and to the right of the center, inside the 640×400 image.
+  // 0.001° north and east: up and to the right of the center, inside the 640×360 image.
   const near = imagePosition(SUBJECT_START, 17, [SUBJECT_START[0] + 0.001, SUBJECT_START[1] + 0.001]);
   assert.ok(near && near.x > 0.5 && near.x < 1 && near.y < 0.5 && near.y > 0);
   // The same fraction of the width in map pixels: 2^17 × 256 / 360 px per degree of longitude.

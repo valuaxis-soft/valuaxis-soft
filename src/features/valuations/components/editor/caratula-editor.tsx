@@ -63,6 +63,7 @@ import { deleteConfirmation, useConfirmDelete } from "./delete-confirm";
 import { UploadButton } from "./image-upload-control";
 import { ImageRightsNotice } from "../legal-notice";
 import { ImageFramingControl } from "./image-framing-control";
+import { ImageThumbnail } from "./image-lightbox";
 
 /** 1 to 12 whole months, at the appraiser's discretion. */
 /** Today at midnight, local time: the earliest valuation date (video 5.2, 3 Nov 2026). */
@@ -277,12 +278,12 @@ function PrincipalImageEditor({
       <div className="grid gap-3 sm:grid-cols-[112px_minmax(0,1fr)] sm:items-center">
         <div className="flex h-24 items-center justify-center overflow-hidden rounded-md bg-muted text-muted-foreground">
           {image?.url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
+            <ImageThumbnail
+              buttonClassName="h-full w-full"
               className="h-full w-full object-cover"
               style={coverImageStyle(focus, size)}
               src={image.url}
-              alt="Imagen principal del bien"
+              title="Imagen principal del bien"
             />
           ) : (
             <ImagePlus className="size-7" />

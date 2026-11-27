@@ -305,3 +305,53 @@ function orderedImages(block: Block) {
   return [...block.images].sort((a, b) => rank(a.id) - rank(b.id));
 }
 
+/** What one opening of the generator fills. */
+export type CroquisTarget =
+  /** The Croquis section or the annex: its own croquis of these kinds. */
+  | { mode: "section"; captures: readonly CroquisKind[] }
+  /** «Agregar → Croquis de localización» in a block or subbloque, or «Generar otro croquis» after one. */
+  | { mode: "insert"; at: CroquisLocation; captures: readonly CroquisKind[] }
+  /** One croquis already in the document, generated again. */
+  | { mode: "image"; imageId: string };
+
+export interface PlacedCroquis {
+  /** The document with the croquis in place; null when none could be placed. */
+  sections: AppSection[] | null;
+  /** The kinds whose place is no longer in the document. */
+  missing: CroquisKind[];
+  /** Where they went, so «Generar otro croquis» adds the next one beside them. */
+  at: CroquisLocation | null;
+}
+
+const locationOf = ({ sectionId, blockId, apartadoId }: CroquisLocation): CroquisLocation => ({ sectionId, blockId, ...(apartadoId ? { apartadoId } : {}) });
+
+/**
+ * The generated croquis put where the generator was opened from, in one
+ * step: generating again from an image replaces that image's picture (and
+ * only it, video 8.7, 0:00), «Agregar» inserts new ones, the section's
+ * access replaces its own croquis or fills its first block. Pure, so the
+ * editor applies the same result the tests check.
+ */
+export function placeGeneratedCroquis(
+  sections: readonly AppSection[],
+  target: CroquisTarget,
+  generated: readonly GeneratedCroquis[],
+  replacements: Partial<Record<CroquisKind, { id: string }>> = {},
+): PlacedCroquis {
+  const all = generated.map((item) => item.kind);
+  if (target.mode === "image") {
+    const found = findCroquisById(sections, target.imageId);
+    const item = generated[0];
+    if (!found || !item) return { sections: null, missing: all, at: null };
+    return { sections: withUpdatedCroquis(sections, target.imageId, item.src, item.marker).sections, missing: [], at: locationOf(found) };
+  }
+  if (target.mode === "insert") {
+    const inserted = withInsertedCroquis(sections, target.at, generated);
+    return inserted.imageIds.length ? { sections: inserted.sections, missing: [], at: target.at } : { sections: null, missing: all, at: null };
+  }
+  const placed = withCroquisImages(sections, generated.map((item) => ({ ...item, replaceImageId: replacements[item.kind]?.id ?? null })));
+  if (placed.missing.length === generated.length) return { sections: null, missing: placed.missing, at: null };
+  const first = documentCroquis(placed.sections).find((entry) => generated.some((item) => item.src === entry.image.src));
+  return { sections: placed.sections, missing: placed.missing, at: first ? locationOf(first) : null };
+}
+

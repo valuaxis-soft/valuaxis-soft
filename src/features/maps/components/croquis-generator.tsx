@@ -1,7 +1,7 @@
 "use client";
 
 import { MapPinned } from "lucide-react";
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -16,23 +16,13 @@ import {
   documentCroquis,
   findCroquisById,
   findCroquisImage,
-  withCroquisImages,
-  withInsertedCroquis,
-  withUpdatedCroquis,
+  placeGeneratedCroquis,
   type CroquisLocation,
+  type CroquisTarget,
   type GeneratedCroquis,
 } from "../croquis-document";
 import type { CroquisImageMarker } from "../croquis-marker";
 import { CroquisGeneratorBody, type GoogleMapsPageConfig } from "./location-panel";
-
-/** What one opening of the generator fills. */
-type CroquisTarget =
-  /** The Croquis section or the annex: its own croquis of these kinds. */
-  | { mode: "section"; captures: readonly CroquisKind[] }
-  /** «Agregar → Croquis de localización» in a block or subbloque. */
-  | { mode: "insert"; at: CroquisLocation; captures: readonly CroquisKind[] }
-  /** One croquis already in the document, generated again. */
-  | { mode: "image"; imageId: string };
 
 interface CroquisGeneratorApi {
   /** «Agregar → Croquis de localización» of this block or subbloque. */
@@ -87,9 +77,13 @@ export function CroquisGeneratorProvider({
   const [target, setTarget] = useState<CroquisTarget | null>(null);
   /** Each opening mounts the generator afresh, with the frames and names of what it opened. */
   const [opening, setOpening] = useState(0);
+  /** Where the last croquis of this opening went: «Generar otro croquis» adds the next one beside it. */
+  const lastPlace = useRef<CroquisLocation | null>(null);
+
   const api = useMemo<CroquisGeneratorApi | null>(() => {
     if (!valuationId) return null;
     const open = (next: CroquisTarget) => {
+      lastPlace.current = null;
       setOpening((count) => count + 1);
       setTarget(next);
     };
@@ -102,26 +96,30 @@ export function CroquisGeneratorProvider({
 
   const resolved = target ? resolveTarget(sections, target) : null;
 
-  const onGenerated = (generated: readonly GeneratedCroquis[], replacements: Partial<Record<CroquisKind, { id: string }>>): CroquisKind[] => {
+  const onGenerated = (
+    generated: readonly GeneratedCroquis[],
+    replacements: Partial<Record<CroquisKind, { id: string }>>,
+    options: { asNew?: boolean } = {},
+  ): CroquisKind[] => {
     if (!target) return generated.map((item) => item.kind);
-    if (target.mode === "image") {
-      const item = generated[0];
-      if (!item || !findCroquisById(sections, target.imageId)) return generated.map((entry) => entry.kind);
-      updateSections((current) => withUpdatedCroquis(current, target.imageId, item.src, item.marker).sections);
-      return [];
+    // «Agregar como croquis nuevo»: the croquis opened from an image goes beside it, and the image stays (video 8.5, 8:28).
+    const found = options.asNew && target.mode === "image" ? findCroquisById(sections, target.imageId) : null;
+    const effective: CroquisTarget = found
+      ? { mode: "insert", at: { sectionId: found.sectionId, blockId: found.blockId, ...(found.apartadoId ? { apartadoId: found.apartadoId } : {}) }, captures: generated.map((item) => item.kind) }
+      : target;
+    const placed = placeGeneratedCroquis(sections, effective, generated, replacements);
+    if (placed.sections) {
+      updateSections((current) => placeGeneratedCroquis(current, effective, generated, replacements).sections ?? current);
+      lastPlace.current = placed.at;
+      if (effective !== target) setTarget(effective);
     }
-    if (target.mode === "insert") {
-      if (!withInsertedCroquis(sections, target.at, generated).imageIds.length) return generated.map((item) => item.kind);
-      updateSections((current) => withInsertedCroquis(current, target.at, generated).sections);
-      return [];
-    }
-    const missing = generated
-      .map((item) => item.kind)
-      .filter((kind) => !sections.some((section) => !section.removed && getCanonicalSectionKey(section.id) === croquisSectionKey(kind)));
-    if (missing.length < generated.length) {
-      updateSections((current) => withCroquisImages(current, generated.map((item) => ({ ...item, replaceImageId: replacements[item.kind]?.id ?? null }))).sections);
-    }
-    return missing;
+    return placed.missing;
+  };
+
+  /** Video 8.5, 8:34: the generator stays open after generating; this makes the next croquis a new one beside the last, with the same streets, lines and frames. */
+  const generateAnother = (captures: readonly CroquisKind[]) => {
+    const at = lastPlace.current;
+    if (at) setTarget({ mode: "insert", at, captures });
   };
 
   return (
@@ -148,6 +146,8 @@ export function CroquisGeneratorProvider({
               address={address}
               captures={resolved.captures}
               onCapturesChange={target.mode === "insert" ? (captures) => setTarget({ ...target, captures }) : undefined}
+              canAddAsNew={target.mode === "image"}
+              onGenerateAnother={generateAnother}
               markers={resolved.markers}
               destination={resolved.destination}
               onGenerated={onGenerated}
