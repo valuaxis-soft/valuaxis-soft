@@ -15,6 +15,7 @@
  */
 import type { Apartado, Block, TableContent } from "../model";
 import type { TableV2 } from "../services/table";
+import { withKeptApartados } from "./generated-block-layout";
 import { applyTableLayout, carriedLayout, layoutOf, sourceOf } from "./generated-table-layout";
 
 /** The pages of a calculation as its capture holds them, for the editor. */
@@ -89,14 +90,12 @@ function captureTables(live: TableContent[], saved: TableContent[]): TableConten
 
 function captureApartados(live: Apartado[], saved: Apartado[]): Apartado[] {
   const savedById = new Map(saved.map((apartado) => [key(apartado.id), apartado]));
-  const liveIds = new Set(live.map((apartado) => key(apartado.id)));
-  return [
-    ...live.map((apartado) => {
-      const stored = savedById.get(key(apartado.id));
-      return stored ? { ...stored, tables: captureTables(apartado.tables, stored.tables) } : apartado;
-    }),
-    ...saved.filter((apartado) => !liveIds.has(key(apartado.id))),
-  ];
+  const captured = live.map((apartado) => {
+    const stored = savedById.get(key(apartado.id));
+    return stored ? { ...stored, tables: captureTables(apartado.tables, stored.tables) } : apartado;
+  });
+  // One only the dictamen has (a subbloque of the appraiser's own, or one the calculation no longer writes) stays where it was.
+  return withKeptApartados(captured, saved, () => true);
 }
 
 /** The block of the dictamen with the tables of the capture: what the appraiser set on the block and its concepts stays. */

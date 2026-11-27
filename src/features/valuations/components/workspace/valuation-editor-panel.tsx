@@ -6,6 +6,7 @@ import { isGeneratedBlock, isRenamableGeneratedTitle } from "@/features/valuatio
 import { isMachineryMarketBlock } from "@/features/valuations/calculation/machinery-document";
 import { isMachineryPropertyKind } from "@/features/valuations/calculation/machinery-types";
 import { captureDisplayBlocks, templateStripSpaceSection } from "@/features/valuations/calculation/capture-display";
+import { isOwnApartado } from "@/features/valuations/calculation/generated-block-layout";
 import { CaptureSlotTarget, CaptureStore, CaptureStoreProvider, SECTION_TOP_SLOT, useCapturePages } from "../editor/capture-host";
 import { COMPARABLE_TYPE_LABELS } from "@/features/valuations/calculation/market-types";
 import { MARKET_ACCENT } from "@/features/valuations/components/calculation/market-accent";
@@ -229,6 +230,23 @@ function collectConceptReferences(sections: AppSection[], currentBlockId: string
   );
 }
 
+/** The concepts of the valuation to reuse in a block, those matching the search. */
+function searchedConceptReferences(sections: AppSection[], currentBlockId: string, search: string): ConceptReference[] {
+  const needle = search.trim().toLowerCase();
+  return collectConceptReferences(sections, currentBlockId).filter((reference) =>
+    !needle || `${reference.concept.label} ${reference.concept.value} ${reference.source}`.toLowerCase().includes(needle));
+}
+
+/** Every concept of the valuation, for links and drafts. */
+function workspaceConcepts(sections: AppSection[]): Concept[] {
+  return sections.flatMap((item) =>
+    item.blocks.flatMap((sectionBlock) => [
+      ...sectionBlock.concepts,
+      ...sectionBlock.apartados.flatMap((subBlock) => subBlock.concepts),
+    ]),
+  );
+}
+
 export function ValuationEditorPanel(props: {
   section: AppSection;
   /** Calculation panel of the section (market approach), shown above its blocks. */
@@ -416,6 +434,9 @@ export function ValuationEditorPanel(props: {
       onAddTableColumn={(tableId, apartadoId) => props.onAddTableColumn(section.id, block.id, tableId, apartadoId)}
       onAddTableRow={(tableId, apartadoId) => props.onAddTableRow(section.id, block.id, tableId, apartadoId)}
       onRemoveTable={(tableId, apartadoId) => props.onRemoveTable(section.id, block.id, tableId, apartadoId)}
+      allSections={props.allSections}
+      editor={props}
+      onAddApartado={() => props.onAddApartado(section.id, block.id)}
     />
   ) : (
     <SortableBlockEditor
@@ -704,7 +725,6 @@ function SortableBlockEditor(props: {
   const hasSectionBoundary = hasPreMarketSectionBoundary(section);
   // The ⋮ menu of a concept offers the same in every section: spacing, format, indent, duplicate, move, delete.
   const hasConceptLayoutControls = true;
-  const subBlockTerm = SUBBLOCK_TERM;
   // One word on the buttons of every section (observations of 27 Oct 2026).
   const subBlockButtonLabel = ADD_SUBBLOCK_LABEL;
   const caratulaBlockKind = isCaratula ? getCaratulaBlockKind(block) : "intermediate";
@@ -721,15 +741,11 @@ function SortableBlockEditor(props: {
   });
   const locks = blockToolbarLocks(toolbar);
   const confirmDelete = useConfirmDelete();
-  // «Imprimir título» (video 7.1): the same choice in the ⋮ and in the right-click menu of the title, for blocks and subbloques.
+  // «Imprimir título» (video 7.1): the same choice in the ⋮ and in the right-click menu of the title (subbloques: ContentApartadoEditor).
   const printBlockTitle = {
     printed: !block.titleHidden,
     onChange: (printed: boolean) => props.onUpdateBlock(section.id, block.id, { titleHidden: printed ? undefined : true }),
   };
-  const apartadoPrintTitle = (subBlock: Apartado) => ({
-    printed: !subBlock.titleHidden,
-    onChange: (printed: boolean) => props.onUpdateApartado(section.id, block.id, subBlock.id, { titleHidden: printed ? undefined : true }),
-  });
   // «Agregar → Croquis de localización» (V5.7-01): the croquis generator for this block or one of its subbloques.
   const croquisGenerator = useCroquisGenerator();
   const apartadoCapabilities = isCaratula
@@ -743,20 +759,9 @@ function SortableBlockEditor(props: {
     onConfirm: () => props.onRemoveConcept(section.id, block.id, concept.id),
   });
   const [conceptSearch, setConceptSearch] = useState("");
-  const allWorkspaceConcepts = allSections.flatMap((item) =>
-    item.blocks.flatMap((sectionBlock) => [
-      ...sectionBlock.concepts,
-      ...sectionBlock.apartados.flatMap((subBlock) => subBlock.concepts),
-    ]),
-  );
+  const allWorkspaceConcepts = workspaceConcepts(allSections);
   // Every section offers the concepts of the valuation to reuse, the map of comparables too.
-  const conceptReferences = collectConceptReferences(allSections, block.id).filter((reference) => {
-    const needle = conceptSearch.trim().toLowerCase();
-    if (!needle) return true;
-    return `${reference.concept.label} ${reference.concept.value} ${reference.source}`
-      .toLowerCase()
-      .includes(needle);
-  });
+  const conceptReferences = searchedConceptReferences(allSections, block.id, conceptSearch);
   // Every block of the carátula is dragged like any other, the assumptions and the conclusion too.
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: block.id,
@@ -1023,183 +1028,249 @@ function SortableBlockEditor(props: {
               props.onUpdateBlock(section.id, block.id, { blockFlow: nextFlow })
             }
             renderApartado={(subBlock, flowIndex, dndState) => (
-              <ApartadoEditor
-                extraActions={<ApartadoTransferMenu section={section} block={block} apartado={subBlock} label={`el ${subBlockTerm}`} printTitle={apartadoPrintTitle(subBlock)} />}
-                printTitle={apartadoPrintTitle(subBlock)}
-                displayLabel={showStructuralNumbering ? apartadoDisplayLabel({ annex: block.annex, sectionLabel: displayBlockLabel }, getBlockFlowApartadoOrder(block), subBlock.id) : ""}
-                readOnly={readOnly}
+              <ContentApartadoEditor
+                editor={props}
+                section={section}
+                block={block}
                 subBlock={subBlock}
-                subBlockTerm={subBlockTerm}
                 siblingIndex={flowIndex}
-                conceptPresentation={subBlock.conceptPresentation}
-                onConceptPresentationChange={(next) =>
-                  props.onUpdateApartado(section.id, block.id, subBlock.id, { conceptPresentation: next })
-                }
-                onPresentationModeChange={(next) =>
-                  props.onUpdateApartado(section.id, block.id, subBlock.id, { presentationMode: next })
-                }
-                onResetConceptPresentations={() => {
-                  const layout = resolveContentLayout(subBlock);
-                  const conceptIds = new Set(subBlock.concepts.map((c) => c.id));
-                  const next = clearConceptCellPresentations(layout, conceptIds);
-                  props.onUpdateApartado(section.id, block.id, subBlock.id, { contentLayout: next });
-                }}
-                onRemove={() =>
-                  props.onRemoveApartado(section.id, block.id, subBlock.id)
-                }
-                onTitleChange={(title) =>
-                  props.onUpdateApartado(section.id, block.id, subBlock.id, { title })
-                }
-                onVisibleChange={(enabled) =>
-                  props.onUpdateApartado(section.id, block.id, subBlock.id, { enabled })
-                }
-                onPageBreakChange={(mode) =>
-                  props.onUpdateApartado(section.id, block.id, subBlock.id, pageBreakPatch(mode))
-                }
-                onMoveUp={() => {
-                  if (!blockFlowV2 || readOnly) return;
-                  const result = moveBlockFlowV2ApartadoOneStep(blockFlowV2, subBlock.id, "up");
-                  if (result.changed) props.onUpdateBlock(section.id, block.id, { blockFlow: result.flow });
-                }}
-                onMoveDown={() => {
-                  if (!blockFlowV2 || readOnly) return;
-                  const result = moveBlockFlowV2ApartadoOneStep(blockFlowV2, subBlock.id, "down");
-                  if (result.changed) props.onUpdateBlock(section.id, block.id, { blockFlow: result.flow });
-                }}
-                canMoveUp={blockFlowV2 ? canMoveBlockFlowV2ApartadoOneStep(blockFlowV2, subBlock.id, "up") : false}
-                canMoveDown={blockFlowV2 ? canMoveBlockFlowV2ApartadoOneStep(blockFlowV2, subBlock.id, "down") : false}
+                dndState={dndState}
+                readOnly={readOnly}
                 capabilities={apartadoCapabilities}
-              >
-                {/* Several concepts of the subbloque chosen at once; its "Agregar" on the same first line, on the left. */}
-                <ConceptSelectionScope
-                  concepts={subBlock.concepts}
-                  readOnly={readOnly}
-                  actions={
-                    <ContentCreationControl
-                        capabilities={apartadoCapabilities}
-                        conceptControl={
-                          <ConceptCreationControl
-                            conceptReferences={conceptReferences}
-                            conceptSearch={conceptSearch}
-                            readOnly={readOnly}
-                            triggerClassName="h-10 w-full justify-start text-sm"
-                            triggerVariant="ghost"
-                            onAddConcept={(type) =>
-                              props.onAddSubConcept(section.id, block.id, subBlock.id, type)
-                            }
-                            onAddConceptFromExisting={(concept, mode) =>
-                              props.onAddConceptFromExisting(section.id, block.id, concept, mode, subBlock.id)
-                            }
-                            onConceptSearchChange={setConceptSearch}
-                          />
-                        }
-                        readOnly={readOnly}
-                        onAddImage={(event) =>
-                          props.onAddImage(section.id, block.id, event, subBlock.id)
-                        }
-                        onAddCroquis={croquisGenerator ? () => croquisGenerator.openInsert({ sectionId: section.id, blockId: block.id, apartadoId: subBlock.id }) : undefined}
-                        croquisLock={croquisInsertLock(section.id)}
-                        onAddTable={() =>
-                          props.onAddTable(section.id, block.id, subBlock.id)
-                        }
-                      />
-                  }
-                  onApplySpacing={(conceptIds, field, lines) => props.onUpdateConcepts(section.id, block.id, conceptIds, { [field]: lines }, subBlock.id)}
-                  onApplyIndent={(conceptIds, presentation) =>
-                    props.onUpdateApartado(section.id, block.id, subBlock.id, { contentLayout: setConceptCellsPresentation(resolveContentLayout(subBlock), new Set(conceptIds), presentation) })
-                  }
-                  onApplyValueFormat={(conceptIds, valueFormat, customUnit) =>
-                    props.onUpdateConcepts(section.id, block.id, formattableConceptIds(subBlock.concepts, conceptIds), valueFormatPatch(valueFormat, customUnit), subBlock.id)
-                  }
-                  onApplyTagStyle={(conceptIds, tagStyle) =>
-                    props.onUpdateApartado(section.id, block.id, subBlock.id, { contentLayout: setConceptRowsTagStyle(resolveContentLayout(subBlock), conceptIds, tagStyle) })
-                  }
-                  onApplyTextMark={(conceptIds, mark) => props.onUpdateConcepts(section.id, block.id, conceptIds, textMarkPatch(mark), subBlock.id)}
-                  onDuplicate={(conceptIds) => props.onDuplicateConcepts(section.id, block.id, conceptIds, subBlock.id)}
-                  onRemove={(conceptIds) => props.onRemoveConcepts(section.id, block.id, conceptIds, subBlock.id)}
-                  renderMove={(conceptIds, done) => (
-                    <MoveConceptsButton
-                      source={{ sectionId: section.id, blockId: block.id, apartadoId: subBlock.id }}
-                      conceptIds={conceptIds}
-                      onMoved={done}
-                    />
-                  )}
-                >
-                {subBlock.valueChart ? (
-                  <ValueChartStyleControl
-                    style={subBlock.valueChartStyle ?? "bars"}
-                    readOnly={readOnly}
-                    onChange={(valueChartStyle) => props.onUpdateApartado(section.id, block.id, subBlock.id, { valueChartStyle })}
-                  />
-                ) : null}
-                <DraftScopeProvider title={subBlock.title} tables={subBlock.tables}>
-                <EditableContentLayout
-                  container={subBlock}
-                  allConcepts={allWorkspaceConcepts}
-                  allContainers={[subBlock]}
-                  externalActiveColumnId={dndState.activeColumnId}
-                  externalActiveTarget={dndState.activeTarget}
-                  conceptCallbacks={{
-                    onRemove: (conceptId) =>
-                      props.onRemoveSubConcept(section.id, block.id, subBlock.id, conceptId),
-                    onUpdate: (conceptId, patch) =>
-                      props.onUpdateSubConcept(section.id, block.id, subBlock.id, conceptId, patch),
-                    onDuplicate: (conceptId) => props.onDuplicateConcepts(section.id, block.id, [conceptId], subBlock.id),
-                    moveSource: { sectionId: section.id, blockId: block.id, apartadoId: subBlock.id },
-                    onUpdateEverywhere: props.onUpdateConceptEverywhere,
-                    // A subbloque links its concepts like its block: «Vincular con…», the suggestion, the relation buttons.
-                    onChangeRelation: props.onChangeConceptRelation,
-                    onUnlink: props.onUnlinkConcept,
-                    onColumnPresentationChange: (columnId, presentation) => {
-                      const layout = resolveContentLayout(subBlock);
-                      const next = presentation != null
-                        ? setColumnPresentation(layout, columnId, presentation)
-                        : clearColumnPresentation(layout, columnId);
-                      props.onUpdateApartado(section.id, block.id, subBlock.id, { contentLayout: next });
-                    },
-                  }}
-                  imageCallbacks={{
-                    onRemove: (imageId) =>
-                      props.onRemoveImage(section.id, block.id, imageId, subBlock.id),
-                    onUpdate: (imageId, patch) =>
-                      props.onUpdateImage(section.id, block.id, imageId, patch, subBlock.id),
-                  }}
-                  tableCallbacks={{
-                    onAddColumn: (tableId) =>
-                      props.onAddTableColumn(section.id, block.id, tableId, subBlock.id),
-                    onAddRow: (tableId) =>
-                      props.onAddTableRow(section.id, block.id, tableId, subBlock.id),
-                    onRemove: (tableId) =>
-                      props.onRemoveTable(section.id, block.id, tableId, subBlock.id),
-                    onUpdate: (tableId, updater) =>
-                      props.onUpdateTable(section.id, block.id, tableId, updater, subBlock.id),
-                  }}
-                  readOnly={readOnly}
-                  enableLayoutControls={hasConceptLayoutControls}
-                  layout={usesCompactConceptSystem ? "caratulaGrid" : "default"}
-                  onContentLayoutChange={(next) =>
-                    props.onUpdateApartado(section.id, block.id, subBlock.id, { contentLayout: next })
-                  }
-                  dndContextMode="external"
-                  containerRef={{ kind: "apartado", blockId: block.id, apartadoId: subBlock.id }}
-                />
-                <ApartadoSummaryDraft
-                  title={subBlock.title}
-                  concepts={subBlock.concepts}
-                  allConcepts={allWorkspaceConcepts}
-                  tables={subBlock.tables}
-                  target={[...subBlock.concepts].reverse().find((concept) => concept.type === "longText" || concept.type === "paragraph") ?? null}
-                  onInsert={(conceptId, value) => props.onUpdateSubConcept(section.id, block.id, subBlock.id, conceptId, { value })}
-                />
-                </DraftScopeProvider>
-                </ConceptSelectionScope>
-              </ApartadoEditor>
+                displayLabel={showStructuralNumbering ? apartadoDisplayLabel({ annex: block.annex, sectionLabel: displayBlockLabel }, getBlockFlowApartadoOrder(block), subBlock.id) : ""}
+                conceptReferences={conceptReferences}
+                conceptSearch={conceptSearch}
+                onConceptSearchChange={setConceptSearch}
+                allWorkspaceConcepts={allWorkspaceConcepts}
+                move={{
+                  onMoveUp: () => {
+                    if (!blockFlowV2 || readOnly) return;
+                    const result = moveBlockFlowV2ApartadoOneStep(blockFlowV2, subBlock.id, "up");
+                    if (result.changed) props.onUpdateBlock(section.id, block.id, { blockFlow: result.flow });
+                  },
+                  onMoveDown: () => {
+                    if (!blockFlowV2 || readOnly) return;
+                    const result = moveBlockFlowV2ApartadoOneStep(blockFlowV2, subBlock.id, "down");
+                    if (result.changed) props.onUpdateBlock(section.id, block.id, { blockFlow: result.flow });
+                  },
+                  canMoveUp: blockFlowV2 ? canMoveBlockFlowV2ApartadoOneStep(blockFlowV2, subBlock.id, "up") : false,
+                  canMoveDown: blockFlowV2 ? canMoveBlockFlowV2ApartadoOneStep(blockFlowV2, subBlock.id, "down") : false,
+                }}
+              />
             )}
           />
           </DraftScopeProvider>
         </ConceptSelectionScope>
 
     </BlockCard>
+  );
+}
+
+/** What a block's editor hands its subbloques: the editor's callbacks. */
+type ApartadoEditorCallbacks = Pick<
+  Parameters<typeof SortableBlockEditor>[0],
+  | "onAddConceptFromExisting" | "onAddImage" | "onAddSubConcept" | "onAddTable" | "onAddTableColumn" | "onAddTableRow"
+  | "onDuplicateConcepts" | "onRemoveApartado" | "onRemoveConcepts" | "onRemoveImage" | "onRemoveSubConcept" | "onRemoveTable"
+  | "onUpdateApartado" | "onUpdateBlock" | "onUpdateConcepts" | "onUpdateConceptEverywhere" | "onChangeConceptRelation"
+  | "onUnlinkConcept" | "onUpdateImage" | "onUpdateSubConcept" | "onUpdateTable"
+>;
+
+/**
+ * A subbloque the appraiser writes, with the same controls in every block:
+ * in a block of his own and in one the calculation writes (video 8.14, 09:05:
+ * «no puedo agregar subbloque»). `dndState` comes from the block's flow when
+ * its concepts are dragged between subbloques; without it, the subbloque
+ * lays its content out on its own.
+ */
+function ContentApartadoEditor({
+  editor, section, block, subBlock, siblingIndex, dndState, readOnly, capabilities, displayLabel,
+  conceptReferences, conceptSearch, onConceptSearchChange, allWorkspaceConcepts, move,
+}: {
+  editor: ApartadoEditorCallbacks;
+  section: AppSection;
+  block: Block;
+  subBlock: Apartado;
+  siblingIndex: number;
+  dndState?: { activeColumnId: string | null; activeTarget: string | null };
+  readOnly: boolean;
+  capabilities: EditorCapabilities;
+  displayLabel: string;
+  conceptReferences: ConceptReference[];
+  conceptSearch: string;
+  onConceptSearchChange: (search: string) => void;
+  allWorkspaceConcepts: Concept[];
+  move: { onMoveUp: () => void; onMoveDown: () => void; canMoveUp: boolean; canMoveDown: boolean };
+}) {
+  const croquisGenerator = useCroquisGenerator();
+  // «Imprimir título» (video 7.1): the same choice in the ⋮ and in the right-click menu of the title.
+  const apartadoPrintTitle = (item: Apartado) => ({
+    printed: !item.titleHidden,
+    onChange: (printed: boolean) => editor.onUpdateApartado(section.id, block.id, item.id, { titleHidden: printed ? undefined : true }),
+  });
+  return (
+    <ApartadoEditor
+      extraActions={<ApartadoTransferMenu section={section} block={block} apartado={subBlock} label={`el ${SUBBLOCK_TERM}`} printTitle={apartadoPrintTitle(subBlock)} />}
+      printTitle={apartadoPrintTitle(subBlock)}
+      displayLabel={displayLabel}
+      readOnly={readOnly}
+      subBlock={subBlock}
+      subBlockTerm={SUBBLOCK_TERM}
+      siblingIndex={siblingIndex}
+      conceptPresentation={subBlock.conceptPresentation}
+      onConceptPresentationChange={(next) =>
+        editor.onUpdateApartado(section.id, block.id, subBlock.id, { conceptPresentation: next })
+      }
+      onPresentationModeChange={(next) =>
+        editor.onUpdateApartado(section.id, block.id, subBlock.id, { presentationMode: next })
+      }
+      onResetConceptPresentations={() => {
+        const layout = resolveContentLayout(subBlock);
+        const conceptIds = new Set(subBlock.concepts.map((c) => c.id));
+        const next = clearConceptCellPresentations(layout, conceptIds);
+        editor.onUpdateApartado(section.id, block.id, subBlock.id, { contentLayout: next });
+      }}
+      onRemove={() =>
+        editor.onRemoveApartado(section.id, block.id, subBlock.id)
+      }
+      onTitleChange={(title) =>
+        editor.onUpdateApartado(section.id, block.id, subBlock.id, { title })
+      }
+      onVisibleChange={(enabled) =>
+        editor.onUpdateApartado(section.id, block.id, subBlock.id, { enabled })
+      }
+      onPageBreakChange={(mode) =>
+        editor.onUpdateApartado(section.id, block.id, subBlock.id, pageBreakPatch(mode))
+      }
+      onMoveUp={move.onMoveUp}
+      onMoveDown={move.onMoveDown}
+      canMoveUp={move.canMoveUp}
+      canMoveDown={move.canMoveDown}
+      capabilities={capabilities}
+    >
+      {/* Several concepts of the subbloque chosen at once; its "Agregar" on the same first line, on the left. */}
+      <ConceptSelectionScope
+        concepts={subBlock.concepts}
+        readOnly={readOnly}
+        actions={
+          <ContentCreationControl
+              capabilities={capabilities}
+              conceptControl={
+                <ConceptCreationControl
+                  conceptReferences={conceptReferences}
+                  conceptSearch={conceptSearch}
+                  readOnly={readOnly}
+                  triggerClassName="h-10 w-full justify-start text-sm"
+                  triggerVariant="ghost"
+                  onAddConcept={(type) =>
+                    editor.onAddSubConcept(section.id, block.id, subBlock.id, type)
+                  }
+                  onAddConceptFromExisting={(concept, mode) =>
+                    editor.onAddConceptFromExisting(section.id, block.id, concept, mode, subBlock.id)
+                  }
+                  onConceptSearchChange={onConceptSearchChange}
+                />
+              }
+              readOnly={readOnly}
+              onAddImage={(event) =>
+                editor.onAddImage(section.id, block.id, event, subBlock.id)
+              }
+              onAddCroquis={croquisGenerator ? () => croquisGenerator.openInsert({ sectionId: section.id, blockId: block.id, apartadoId: subBlock.id }) : undefined}
+              croquisLock={croquisInsertLock(section.id)}
+              onAddTable={() =>
+                editor.onAddTable(section.id, block.id, subBlock.id)
+              }
+            />
+        }
+        onApplySpacing={(conceptIds, field, lines) => editor.onUpdateConcepts(section.id, block.id, conceptIds, { [field]: lines }, subBlock.id)}
+        onApplyIndent={(conceptIds, presentation) =>
+          editor.onUpdateApartado(section.id, block.id, subBlock.id, { contentLayout: setConceptCellsPresentation(resolveContentLayout(subBlock), new Set(conceptIds), presentation) })
+        }
+        onApplyValueFormat={(conceptIds, valueFormat, customUnit) =>
+          editor.onUpdateConcepts(section.id, block.id, formattableConceptIds(subBlock.concepts, conceptIds), valueFormatPatch(valueFormat, customUnit), subBlock.id)
+        }
+        onApplyTagStyle={(conceptIds, tagStyle) =>
+          editor.onUpdateApartado(section.id, block.id, subBlock.id, { contentLayout: setConceptRowsTagStyle(resolveContentLayout(subBlock), conceptIds, tagStyle) })
+        }
+        onApplyTextMark={(conceptIds, mark) => editor.onUpdateConcepts(section.id, block.id, conceptIds, textMarkPatch(mark), subBlock.id)}
+        onDuplicate={(conceptIds) => editor.onDuplicateConcepts(section.id, block.id, conceptIds, subBlock.id)}
+        onRemove={(conceptIds) => editor.onRemoveConcepts(section.id, block.id, conceptIds, subBlock.id)}
+        renderMove={(conceptIds, done) => (
+          <MoveConceptsButton
+            source={{ sectionId: section.id, blockId: block.id, apartadoId: subBlock.id }}
+            conceptIds={conceptIds}
+            onMoved={done}
+          />
+        )}
+      >
+      {subBlock.valueChart ? (
+        <ValueChartStyleControl
+          style={subBlock.valueChartStyle ?? "bars"}
+          readOnly={readOnly}
+          onChange={(valueChartStyle) => editor.onUpdateApartado(section.id, block.id, subBlock.id, { valueChartStyle })}
+        />
+      ) : null}
+      <DraftScopeProvider title={subBlock.title} tables={subBlock.tables}>
+      <EditableContentLayout
+        container={subBlock}
+        allConcepts={allWorkspaceConcepts}
+        allContainers={[subBlock]}
+        externalActiveColumnId={dndState?.activeColumnId}
+        externalActiveTarget={dndState?.activeTarget}
+        conceptCallbacks={{
+          onRemove: (conceptId) =>
+            editor.onRemoveSubConcept(section.id, block.id, subBlock.id, conceptId),
+          onUpdate: (conceptId, patch) =>
+            editor.onUpdateSubConcept(section.id, block.id, subBlock.id, conceptId, patch),
+          onDuplicate: (conceptId) => editor.onDuplicateConcepts(section.id, block.id, [conceptId], subBlock.id),
+          moveSource: { sectionId: section.id, blockId: block.id, apartadoId: subBlock.id },
+          onUpdateEverywhere: editor.onUpdateConceptEverywhere,
+          // A subbloque links its concepts like its block: «Vincular con…», the suggestion, the relation buttons.
+          onChangeRelation: editor.onChangeConceptRelation,
+          onUnlink: editor.onUnlinkConcept,
+          onColumnPresentationChange: (columnId, presentation) => {
+            const layout = resolveContentLayout(subBlock);
+            const next = presentation != null
+              ? setColumnPresentation(layout, columnId, presentation)
+              : clearColumnPresentation(layout, columnId);
+            editor.onUpdateApartado(section.id, block.id, subBlock.id, { contentLayout: next });
+          },
+        }}
+        imageCallbacks={{
+          onRemove: (imageId) =>
+            editor.onRemoveImage(section.id, block.id, imageId, subBlock.id),
+          onUpdate: (imageId, patch) =>
+            editor.onUpdateImage(section.id, block.id, imageId, patch, subBlock.id),
+        }}
+        tableCallbacks={{
+          onAddColumn: (tableId) =>
+            editor.onAddTableColumn(section.id, block.id, tableId, subBlock.id),
+          onAddRow: (tableId) =>
+            editor.onAddTableRow(section.id, block.id, tableId, subBlock.id),
+          onRemove: (tableId) =>
+            editor.onRemoveTable(section.id, block.id, tableId, subBlock.id),
+          onUpdate: (tableId, updater) =>
+            editor.onUpdateTable(section.id, block.id, tableId, updater, subBlock.id),
+        }}
+        readOnly={readOnly}
+        enableLayoutControls
+        layout="caratulaGrid"
+        onContentLayoutChange={(next) =>
+          editor.onUpdateApartado(section.id, block.id, subBlock.id, { contentLayout: next })
+        }
+        dndContextMode={dndState ? "external" : "standalone"}
+        containerRef={{ kind: "apartado", blockId: block.id, apartadoId: subBlock.id }}
+      />
+      <ApartadoSummaryDraft
+        title={subBlock.title}
+        concepts={subBlock.concepts}
+        allConcepts={allWorkspaceConcepts}
+        tables={subBlock.tables}
+        target={[...subBlock.concepts].reverse().find((concept) => concept.type === "longText" || concept.type === "paragraph") ?? null}
+        onInsert={(conceptId, value) => editor.onUpdateSubConcept(section.id, block.id, subBlock.id, conceptId, { value })}
+      />
+      </DraftScopeProvider>
+      </ConceptSelectionScope>
+    </ApartadoEditor>
   );
 }
 
@@ -1232,7 +1303,7 @@ function valueFormatPatch(valueFormat: ConceptValueFormat, customUnit?: string):
  */
 function GeneratedBlockEditor({
   block, blockCount, blockIndex, capture, readOnly: sectionReadOnly, section, onMoveBlock, onUpdateBlock, onUpdateTable,
-  onAddTable, onAddTableColumn, onAddTableRow, onRemoveTable,
+  onAddTable, onAddTableColumn, onAddTableRow, onRemoveTable, allSections, editor, onAddApartado,
 }: {
   block: Block;
   blockCount: number;
@@ -1249,10 +1320,29 @@ function GeneratedBlockEditor({
   onAddTableColumn: (tableId: string, apartadoId?: string) => void;
   onAddTableRow: (tableId: string, apartadoId?: string) => void;
   onRemoveTable: (tableId: string, apartadoId?: string) => void;
+  allSections: AppSection[];
+  /** The editor's callbacks, for the subbloques of the appraiser's own. */
+  editor: ApartadoEditorCallbacks;
+  /** «Subbloque»: one of his own, kept when the calculation writes the block again (video 8.14, 09:05). */
+  onAddApartado: () => void;
 }) {
   const confirmDelete = useConfirmDelete();
+  const [conceptSearch, setConceptSearch] = useState("");
   // The block's own tables are laid out as they print (GeneratedBlockTables); a subbloque's, one after another.
-  const tables = block.apartados.flatMap((apartado) => apartado.tables.map((table) => ({ table, apartadoId: apartado.id })));
+  const tables = block.apartados.filter((apartado) => !isOwnApartado(apartado)).flatMap((apartado) => apartado.tables.map((table) => ({ table, apartadoId: apartado.id })));
+  // What the editor shows of its subbloques: the calculation's with tables, and every one of the appraiser's.
+  const shownApartados = block.apartados.filter((apartado) => isOwnApartado(apartado) || tables.some((item) => item.apartadoId === apartado.id));
+  const apartadoOrder = getBlockFlowApartadoOrder(block);
+  /** One of his subbloques one place up or down among the ones shown, the calculation's and his. */
+  const moveOwnApartado = (apartadoId: string, direction: -1 | 1) => {
+    const at = shownApartados.findIndex((item) => item.id === apartadoId);
+    const neighbour = shownApartados[at + direction];
+    const moved = block.apartados.find((item) => item.id === apartadoId);
+    if (at === -1 || !neighbour || !moved) return;
+    const rest = block.apartados.filter((item) => item.id !== apartadoId);
+    const place = rest.findIndex((item) => item.id === neighbour.id) + (direction === 1 ? 1 : 0);
+    onUpdateBlock({ apartados: [...rest.slice(0, place), moved, ...rest.slice(place)] });
+  };
   // A block the dictamen does not have yet is only captured in: hiding, moving and formatting it come with its first result.
   const pending = Boolean(capture?.pending);
   const readOnly = sectionReadOnly || pending;
@@ -1350,12 +1440,12 @@ function GeneratedBlockEditor({
       }}
     >
       <ActionStrip
-        capabilities={{ tables: true }}
+        capabilities={{ tables: true, apartados: true }}
         locks={{ add: locks.add, subblock: locks.subblock }}
         readOnly={readOnly}
         conceptControl={null}
         onAddImage={() => undefined}
-        onAddApartado={() => undefined}
+        onAddApartado={onAddApartado}
         onAddTable={() => onAddTable()}
         subBlockLabel={ADD_SUBBLOCK_LABEL}
       />
@@ -1386,13 +1476,36 @@ function GeneratedBlockEditor({
           onRemoveTable={onRemoveTable}
         />
       ) : null}
-      {block.enabled || capture ? block.apartados.filter((apartado) => tables.some((item) => item.apartadoId === apartado.id)).map((apartado) => (
+      {block.enabled || capture ? shownApartados.map((apartado, index) => isOwnApartado(apartado) ? (
+        // A subbloque of his own: concepts, tables and images as in any block; it prints, and the calculation keeps it.
+        <ContentApartadoEditor
+          key={apartado.id}
+          editor={editor}
+          section={section}
+          block={block}
+          subBlock={apartado}
+          siblingIndex={index}
+          readOnly={readOnly}
+          capabilities={getApartadoEditorCapabilities()}
+          displayLabel={apartadoDisplayLabel(block, apartadoOrder, apartado.id)}
+          conceptReferences={searchedConceptReferences(allSections, block.id, conceptSearch)}
+          conceptSearch={conceptSearch}
+          onConceptSearchChange={setConceptSearch}
+          allWorkspaceConcepts={workspaceConcepts(allSections)}
+          move={{
+            onMoveUp: () => moveOwnApartado(apartado.id, -1),
+            onMoveDown: () => moveOwnApartado(apartado.id, 1),
+            canMoveUp: index > 0,
+            canMoveDown: index < shownApartados.length - 1,
+          }}
+        />
+      ) : (
         <div key={apartado.id} className="grid min-w-0 gap-1.5" data-generated-apartado={apartado.id}>
           {/* The apartado's title over its tables, with its number as the dictamen prints it (video 8.14, 12:05: «X.1, X.2»). */}
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             {apartado.title ? (
               <h4 className="text-sm font-semibold uppercase text-foreground/80">
-                {[/^[A-Z]\)\s/.test(apartado.title.trim()) ? "" : apartadoDisplayLabel(block, getBlockFlowApartadoOrder(block), apartado.id), apartado.title].filter(Boolean).join(" ")}
+                {[/^[A-Z]\)\s/.test(apartado.title.trim()) ? "" : apartadoDisplayLabel(block, apartadoOrder, apartado.id), apartado.title].filter(Boolean).join(" ")}
               </h4>
             ) : null}
             {!readOnly ? (

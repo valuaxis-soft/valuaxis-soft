@@ -48,12 +48,16 @@ test("a block the calculation writes keeps its controls disabled with the reason
   assert.equal(state.alignment.enabled, true);
   // «Agregar» a table of his own, as in any block (24 nov 2026: «no me deja agregar otra tabla»).
   assert.equal(state.add.enabled, true);
-  assert.equal(state.subblock.reason, GENERATED_BLOCK_REASON);
+  // And subbloques of his own (video 8.14, 09:05), kept when the calculation writes the block again.
+  assert.equal(state.subblock.enabled, true);
   assert.equal(state.delete.enabled, false);
   assert.ok(state.delete.reason?.includes("ocúltalo"));
   assert.equal(state.transfer.enabled, false);
+  assert.equal(state.transfer.reason, GENERATED_BLOCK_REASON);
+  // The reason no longer sends him to the calculation panel, which does not hold the block's tables (video 8.14).
+  assert.ok(!GENERATED_BLOCK_REASON.includes("panel"));
   const locks = blockToolbarLocks(state);
-  assert.deepEqual(Object.keys(locks), ["transfer", "subblock", "delete"]);
+  assert.deepEqual(Object.keys(locks), ["transfer", "delete"]);
 });
 
 test("a content block locked for transfer says why on the ··· menu only", () => {

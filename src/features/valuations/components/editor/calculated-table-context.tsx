@@ -6,7 +6,7 @@ import type { MenuReasons } from "../../services/table-context-menu";
 import type { DeleteConfirmation } from "./delete-confirm";
 
 /** Why a cell the calculation writes is not typed, as the cells of the capture panels say it. */
-export const CALCULATED_CELL_HINT = "Esta cifra la calcula el sistema; cámbiala en su panel de cálculo.";
+export const CALCULATED_CELL_HINT = "Esta cifra la calcula el sistema con los datos que capturas en el cálculo.";
 /** The same, in a table whose blank cells are the capture of its calculation. */
 export const CALCULATED_IN_PLACE_HINT = "Esta cifra la calcula el sistema con lo que capturas en las celdas en blanco de la tabla.";
 /** The same, in a capture table of the construction section. */

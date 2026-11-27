@@ -9,7 +9,7 @@
  * Pure and deterministic: the same block and layout give the same result,
  * so a valuation saved before can be written again with it.
  */
-import type { Block, ContentLayout, ContentLayoutItemRef, ContentLayoutRowV2, TableContent } from "../model";
+import type { Apartado, Block, ContentLayout, ContentLayoutItemRef, ContentLayoutRowV2, TableContent } from "../model";
 import {
   isContentLayout,
   normalizeContentLayout,
@@ -21,6 +21,37 @@ export const GENERATED_ID_PREFIX = "motor-";
 
 /** A table the appraiser added to a block the calculation writes: it is his, the calculation never writes it. */
 export const isOwnTable = (table: Pick<TableContent, "id">) => !table.id.toLowerCase().startsWith(GENERATED_ID_PREFIX);
+
+/**
+ * A subbloque the appraiser added to a block the calculation writes (video
+ * 8.14, 09:05: «no puedo agregar subbloque»): his, with his concepts, tables
+ * and images; the calculation never writes it.
+ */
+export const isOwnApartado = (apartado: Pick<Apartado, "id">) => !apartado.id.toLowerCase().startsWith(GENERATED_ID_PREFIX);
+
+/**
+ * The subbloques written now, with those of `previous` that `keep` picks and
+ * are not written, each in the place it had: after the subbloque that came
+ * before it, or else before the one that came after it; at the end when
+ * neither is there any more.
+ */
+export function withKeptApartados(written: Apartado[], previous: Apartado[], keep: (apartado: Apartado) => boolean): Apartado[] {
+  const key = (apartado: Apartado) => apartado.id.toLowerCase();
+  const writtenIds = new Set(written.map(key));
+  const result = [...written];
+  previous.forEach((apartado, index) => {
+    if (writtenIds.has(key(apartado)) || !keep(apartado)) return;
+    const at = (other: Apartado) => result.findIndex((item) => key(item) === key(other));
+    const before = previous.slice(0, index).reverse().find((other) => at(other) !== -1);
+    if (before) {
+      result.splice(at(before) + 1, 0, apartado);
+      return;
+    }
+    const after = previous.slice(index + 1).find((other) => at(other) !== -1);
+    result.splice(after ? at(after) : result.length, 0, apartado);
+  });
+  return result;
+}
 
 type Container = Pick<Block, "concepts" | "tables" | "images" | "contentLayout">;
 
@@ -73,8 +104,8 @@ function firstRowOf(rows: ContentLayoutRowV2[], items: ContentLayoutItemRef[]): 
 
 /**
  * The block the calculation writes now, with what the appraiser put on the
- * one before: his own tables (after the calculation's) and how the tables
- * are laid out.
+ * one before: his own tables (after the calculation's), how the tables
+ * are laid out, and his own subbloques where he put them.
  */
 export function withAppraiserLayout(block: Block, previous: Block | undefined): Block {
   if (!previous) return block;
@@ -92,7 +123,10 @@ export function withAppraiserLayout(block: Block, previous: Block | undefined): 
     const kept = stored?.contentLayout;
     return isContentLayout(kept) ? { ...withTables, contentLayout: keptContentLayout(withTables, kept) } : withTables;
   });
-  const next = apartados.some((apartado, index) => apartado !== withOwn.apartados[index]) ? { ...withOwn, apartados } : withOwn;
+  // His own subbloques, whole, among the calculation's (video 8.14, 09:05).
+  const merged = withKeptApartados(apartados, previous.apartados, isOwnApartado);
+  const changed = merged.length !== withOwn.apartados.length || merged.some((apartado, index) => apartado !== withOwn.apartados[index]);
+  const next = changed ? { ...withOwn, apartados: merged } : withOwn;
   if (!isContentLayout(previous.contentLayout)) return next;
   return { ...next, contentLayout: keptContentLayout(next, previous.contentLayout) };
 }

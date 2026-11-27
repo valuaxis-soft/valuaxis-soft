@@ -38,7 +38,12 @@ export type BlockToolbarKind =
   /** A Block the calculation writes: its figures are edited in the calculation panel. */
   | "generated";
 
-export const GENERATED_BLOCK_REASON = "Lo escribe el cálculo: sus conceptos y tablas se editan en el panel de cálculo.";
+/**
+ * Why a block the calculation writes is not copied, duplicated or moved to another section. Its tables are edited
+ * in the block itself, and the tables and subbloques the appraiser adds to it stay when it is recalculated.
+ */
+export const GENERATED_BLOCK_REASON =
+  "Lo escribe el cálculo: no se copia ni se mueve a otra sección. Sus tablas se editan aquí mismo, y las tablas y subbloques que le agregues se conservan al recalcular.";
 export const GENERATED_BLOCK_TITLE_REASON = "El título lo pone el cálculo.";
 export const GENERATED_BLOCK_DELETE_REASON = "Lo escribe el cálculo: el cálculo lo volvería a crear. Si no debe imprimirse, ocúltalo.";
 export const CARATULA_PAGE_BREAK_REASON = "La carátula se imprime en su propia página: sus bloques no tienen salto de página.";
@@ -104,7 +109,8 @@ export function blockToolbarState(input: {
           alignment: enabled(),
           // A table of the appraiser's own beside the calculation's (24 nov 2026: «no me deja agregar otra tabla»); it prints and is kept when the calculation writes the block again.
           add: enabled(),
-          subblock: locked(GENERATED_BLOCK_REASON),
+          // And subbloques of his own, with their concepts and tables (video 8.14, 09:05: «no puedo agregar subbloque»), kept the same way.
+          subblock: enabled(),
           delete: locked(GENERATED_BLOCK_DELETE_REASON),
         };
     }
