@@ -56,9 +56,23 @@ import {
   type FactorSlotConfig,
   type FactorType,
   type MarketCalculationDto,
+  type MarketSettingsDto,
   type MarketStatistic,
+  type StatisticKey,
+  printedStatisticsOf,
 } from "./market-types";
 import { GENERATED_ID_PREFIX, withAppraiserLayout } from "./generated-block-layout";
+import { formatComparableId } from "./comparable-card";
+import { extraStatisticText } from "./market-statistics";
+import {
+  MARKET_LINK_TABLES,
+  cardFieldLabel,
+  linkedCellText,
+  linkedColumnId,
+  linkedColumnsOf,
+  specLabel,
+  type MarketLinkTable,
+} from "./market-table-columns";
 
 export const GENERATED_BLOCK_PREFIX = GENERATED_ID_PREFIX;
 
@@ -335,24 +349,32 @@ export function marketDocumentBlocks(
   options: { capture?: boolean; advertiserData?: boolean } = {},
 ): Block[] {
   const { settings } = calculation;
-  const comparables = calculation.comparables.map((comparable) => printableAdvertiser(comparable, options.advertiserData === true));
-  if (!comparables.length) return [];
+  // The editor sees the advertiser's name and phone it captured (video 8.9, 00:01); the dictamen prints them only when the carátula says so.
+  const comparables = calculation.comparables.map((comparable) => printableAdvertiser(comparable, options.capture === true || options.advertiserData === true));
+  // The structure of the calculation shows while it is empty (video 8.7: «que sí se vea la estructura siempre, para que no se pierdan»).
+  if (!comparables.length && !options.capture) return [];
   const prefix = `${prefixFor(settings.comparableType)}-enfoque`;
   const page = PAGE[settings.comparableType];
   const words = MARKET_LABELS[settings.comparableType];
   const byReference = new Map(result?.homologation.comparables.map((row) => [row.id, row]) ?? []);
   const reference = (comparable: ComparableDto) => String(comparable.reference);
-  // The fourth column of the offers table: the books give the offer date for land and the conservation for buildings.
-  const offersOfLand = isLandComparableType(settings.comparableType);
   const fields = characteristicFieldsOf(settings);
   // The appraiser's added columns follow each comparable by its id, also when the comparables are reordered (V7.2-14).
   const rowKeys = comparables.map((comparable) => comparableRowKey(comparable.id));
+  const linked = (table: MarketLinkTable) => linkedColumnsOf(settings, table);
+  const linkedColumns = (table: MarketLinkTable) => linked(table).map((field) => ({
+    ...(field.figure ? figureColumn(columnTitle(field.label)) : textColumn(columnTitle(field.label))),
+    id: linkedColumnId(field.key),
+  }));
+  const linkedCells = (table: MarketLinkTable, comparable: ComparableDto) => linked(table).map((field) => linkedCellText(field, comparable));
+  const columns = marketTableColumns(settings);
 
   // The offer level of the market research: the options of the books (or the appraiser's), with an X on the one observed.
+  // The editor always has its place, where it is chosen; the dictamen prints it once one is marked.
   const offerMark = offerMarkOf(settings);
-  const offer = offerMark !== null
+  const offer = offerMark !== null || options.capture
     ? [generatedApartado(`${prefix}-oferta`, page.offerTitle, {
-        tables: [offerOptionsTable(`${prefix}-tabla-oferta`, settings.offerIntro?.trim() || page.offerIntro, offerLabelsOf(settings), offerMark)],
+        tables: [offerOptionsTable(`${prefix}-tabla-oferta`, settings.offerIntro?.trim() || page.offerIntro, offerLabelsOf(settings), offerMark ?? -1)],
       })]
     : [];
 
@@ -363,38 +385,54 @@ export function marketDocumentBlocks(
   });
   // The appraiser may leave the homologation table out of the dictamen: the offers then carry the statistics and the value.
   const homologationShown = options.capture ? homologatesOf(settings) : printsHomologationTable(settings);
+  // In the editor, the advertiser's data are seen and said not to print, unless the carátula says so (matrix 1.5 bis).
+  const advertiserNote: TableNote[] = options.capture && !options.advertiserData && comparables.some((comparable) => comparable.contactName || comparable.contactPhone)
+    ? [{ position: "bottom", small: true, text: ADVERTISER_CAPTURE_NOTE }]
+    : [];
+  // As the appraiser's Excel: the comparables (ref., ID, location, land use, characteristics), then their offers and contact (video 8.10, 07:54).
   const data = generatedApartado(`${prefix}-datos`, `DATOS DE COMPARABLES ${page.scope}`, {
     tables: [
-      generatedTable(`${prefix}-tabla-caracteristicas`, "Características de los comparables",
-        [figureColumn("REF."), textColumn("UBICACIÓN"), textColumn("USO DE SUELO", "center"), textColumn("CARACTERÍSTICAS")],
-        comparables.map((comparable) => [
-          reference(comparable),
-          comparable.location,
-          landUseCell(comparable),
-          characteristicsLine(comparable, fields),
-        ]),
-        { notes: [{ position: "top", label: "Obtención del valor unitario.", text: page.intro }], rowKeys }),
-      generatedTable(`${prefix}-tabla-ofertas`, "Ofertas de los comparables",
+      generatedTable(`${prefix}-tabla-caracteristicas`, "Comparables",
         [
-          figureColumn("REF."), textColumn("CONTACTO"), figureColumn("TELÉFONO"),
-          offersOfLand ? figureColumn("FECHA") : textColumn("CONSERVACIÓN", "center"),
-          figureColumn(page.area), moneyColumn(page.price), moneyColumn(page.unit),
+          figureColumn("REF."), { ...figureColumn("ID"), id: COMPARABLE_ID_COLUMN }, textColumn("UBICACIÓN"), textColumn("USO DE SUELO", "center"),
+          textColumn("CARACTERÍSTICAS"), ...linkedColumns("caracteristicas"),
         ],
         comparables.map((comparable) => [
           reference(comparable),
-          [comparable.sourceName, comparable.contactName].filter(Boolean).join(" · ") || EMPTY,
-          comparable.contactPhone ?? EMPTY,
-          offersOfLand ? shortDate(comparable.offerDate) : comparable.conservation ?? EMPTY,
+          formatComparableId(comparable.folio) ?? EMPTY,
+          comparable.location,
+          landUseCell(comparable),
+          characteristicsLine(comparable, fields),
+          ...linkedCells("caracteristicas", comparable),
+        ]),
+        { notes: [{ position: "top", label: "Obtención del valor unitario.", text: page.intro }], rowKeys }),
+      generatedTable(`${prefix}-tabla-ofertas`, "Datos de la oferta",
+        [
+          // Every column with its id: the contact came in after the others and keeps their place ids (col-1…col-7).
+          { ...figureColumn("REF."), id: generatedColumnId(0) },
+          ...columns.ofertas.map(({ id, field }) => {
+            const title = columnTitle(cardFieldLabel(settings, field));
+            return { ...(field === "sourceName" || field === "contactName" ? textColumn(title) : figureColumn(title)), id };
+          }),
+          { ...figureColumn(page.area), id: generatedColumnId(4) },
+          { ...moneyColumn(page.price), id: generatedColumnId(5) },
+          { ...moneyColumn(page.unit), id: generatedColumnId(6) },
+          ...linkedColumns("ofertas"),
+        ],
+        comparables.map((comparable) => [
+          reference(comparable),
+          ...columns.ofertas.map(({ field }) => offerCell(comparable, field)),
           figure(comparable.area),
           comparable.price ? money(comparable.price) : EMPTY,
           comparable.area && comparable.price ? money(comparable.price / comparable.area) : EMPTY,
+          ...linkedCells("ofertas", comparable),
         ]),
         homologationShown
-          ? { rowKeys, ...(exchangeNotes.length ? { notes: exchangeNotes } : {}) }
+          ? { rowKeys, ...(exchangeNotes.length || advertiserNote.length ? { notes: [...exchangeNotes, ...advertiserNote] } : {}) }
           : {
               rowKeys,
               summaryBoxes: homologationBoxes(calculation, result).filter((box) => box.position === "bottom"),
-              notes: [...exchangeNotes, ...justificationNotes(calculation)],
+              notes: [...exchangeNotes, ...advertiserNote, ...justificationNotes(calculation)],
             }),
     ],
   });
@@ -411,6 +449,7 @@ export function marketDocumentBlocks(
         ...slots.map((slot) => figureColumn(factorTitle(slot), { group: factors })),
         resultantColumn("FRe", factors),
         moneyColumn(`${page.homologated} ${page.unit}`),
+        ...linkedColumns("homologacion"),
       ],
       comparables.map((comparable) => {
         const row = byReference.get(reference(comparable));
@@ -426,6 +465,7 @@ export function marketDocumentBlocks(
           }),
           row ? figure(row.resultantFactor, decimals) : EMPTY,
           row ? money(row.homologatedUnitValue) : EMPTY,
+          ...linkedCells("homologacion", comparable),
         ];
       }),
       {
@@ -445,8 +485,72 @@ export function marketDocumentBlocks(
   ];
 }
 
+/** A datum of the card as the header of its column: in capitals, as the headers of the books. */
+const columnTitle = (label: string) => label.toLocaleUpperCase("es-MX");
+
+/** The comparable's number in the firm's base (C-00091), beside its reference; its own id keeps the place ids of the others. */
+const COMPARABLE_ID_COLUMN = "col-folio";
+
+/** Under the offers, in the editor only: the advertiser's data are seen while capturing and print only when chosen. */
+export const ADVERTISER_CAPTURE_NOTE =
+  "El contacto y el teléfono del anunciante se ven aquí para verificar los comparables; el dictamen los imprime solo si activas «Incluir datos del anunciante en la memoria» en Carátula › Configuración del avalúo.";
+
+/** What the column of a datum of the card in the offers prints for a comparable. */
+function offerCell(comparable: ComparableDto, field: string): string {
+  switch (field) {
+    case "sourceName": return comparable.sourceName ?? EMPTY;
+    case "contactName": return comparable.contactName ?? EMPTY;
+    case "contactPhone": return comparable.contactPhone ?? EMPTY;
+    case "offerDate": return shortDate(comparable.offerDate);
+    default: return comparable.conservation ?? EMPTY;
+  }
+}
+
+/**
+ * The columns of the market's tables that are data of the card, by table:
+ * their id and the datum (video 8.9: the columns and the cards read the same
+ * name). The offers: source, phone, contact and, for land, the offer date
+ * (the conservation for buildings, as the books); the columns the
+ * appraiser linked follow in each table.
+ */
+export function marketTableColumns(settings: Pick<MarketSettingsDto, "comparableType" | "linkedColumns" | "characteristicFields" | "fieldLabels">) {
+  const offersOfLand = isLandComparableType(settings.comparableType);
+  const linked = (table: MarketLinkTable) => linkedColumnsOf(settings, table).map((field) => ({ id: linkedColumnId(field.key), field: field.key }));
+  return {
+    caracteristicas: linked("caracteristicas"),
+    ofertas: [
+      { id: generatedColumnId(1), field: "sourceName" },
+      { id: generatedColumnId(2), field: "contactPhone" },
+      { id: "col-contacto", field: "contactName" },
+      { id: generatedColumnId(3), field: offersOfLand ? "offerDate" : "conservation" },
+    ],
+    ofertasLinked: linked("ofertas"),
+    homologacion: linked("homologacion"),
+  };
+}
+
+/** The datum of the card a column of a market's table shows, by the table's id and the column's; null when it is the calculation's. */
+export function marketColumnField(settings: Pick<MarketSettingsDto, "comparableType" | "linkedColumns" | "characteristicFields" | "fieldLabels">, tableId: string, columnId: string): string | null {
+  const columns = marketTableColumns(settings);
+  const table = tableId.toLowerCase();
+  const id = columnId.toLowerCase();
+  const among = (list: Array<{ id: string; field: string }>) => list.find((column) => column.id === id)?.field ?? null;
+  if (table.endsWith("-tabla-ofertas")) return among([...columns.ofertas, ...columns.ofertasLinked]);
+  if (table.endsWith("-tabla-caracteristicas")) return among(columns.caracteristicas);
+  if (table.endsWith("-tabla-homologacion")) return among(columns.homologacion);
+  return null;
+}
+
+/** The table of a market's page a datum of the card is linked in, by the table's id. */
+export function marketLinkTableOf(tableId: string): MarketLinkTable | null {
+  const table = tableId.toLowerCase();
+  return MARKET_LINK_TABLES.find((name) => table.endsWith(`-tabla-${name}`)) ?? null;
+}
+
 /** The homologation table of a market's page, and the column of each of its factors, in the order they multiply. */
 export const marketHomologationTableId = (type: ComparableType) => `${prefixFor(type)}-enfoque-tabla-homologacion`;
+/** The tables of a market's page, by name: where the editor puts what is captured above each one. */
+export const marketTableId = (type: ComparableType, name: "oferta" | MarketLinkTable) => `${prefixFor(type)}-enfoque-tabla-${name}`;
 export const marketFactorColumnId = (slotIndex: number) => generatedColumnId(4 + slotIndex);
 
 /**
@@ -459,14 +563,12 @@ export function marketCaptureColumns({ settings, comparables }: Pick<MarketCalcu
   const keys = comparables.map((comparable) => comparableRowKey(comparable.id));
   const table = (name: string) => `${prefix}-tabla-${name}`;
   const rows = (name: string) => generatedRowIds(table(name), keys.length, keys);
-  // The adopted value closes the box of the statistics printed beside it; its row has a key once the appraiser chose them.
-  const beside = shownStatistics(settings).filter((key) => STATISTICS_BESIDE_ADOPTED.has(key)).length;
   return {
     characteristics: { table: table("caracteristicas"), rows: rows("caracteristicas"), location: generatedColumnId(1), landUse: generatedColumnId(2), text: generatedColumnId(3) },
     offers: { table: table("ofertas"), rows: rows("ofertas"), phone: generatedColumnId(2), area: generatedColumnId(4), price: generatedColumnId(5) },
     homologation: { table: table("homologacion"), rows: rows("homologacion"), factor: marketFactorColumnId },
     /** Under the homologation; under the offers when the market does not homologate. */
-    adopted: { table: table(homologatesOf(settings) ? "homologacion" : "ofertas"), box: `valores.${settings.printedStatistics ? "adoptado" : beside}` },
+    adopted: { table: table(homologatesOf(settings) ? "homologacion" : "ofertas"), box: "valores.adoptado" },
   };
 }
 
@@ -504,9 +606,10 @@ function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApp
   const page = PAGE[settings.comparableType];
   const againstBase = homologationBasisOf(settings) === "LOTE_TIPO";
   // Frente and fondo of what the homologation is made against: the typical lot of the zone, or the subject; only what was captured.
+  // With the names the appraiser gave them in the specifications (video 8.10, 09:22: «fondo del sujeto o fondo del bien valuado»).
   const [frontLabel, depthLabel] = againstBase
-    ? ["Frente tipo en la zona:", "Fondo tipo en la zona:"]
-    : ["Frente del sujeto:", "Fondo del sujeto:"];
+    ? [`${specLabel(settings, "frontage", "Frente tipo en la zona")}:`, `${specLabel(settings, "depth", "Fondo tipo en la zona")}:`]
+    : [`${specLabel(settings, "frontage", "Frente del sujeto")}:`, `${specLabel(settings, "depth", "Fondo del sujeto")}:`];
   const zone: TableSummaryBox = {
     id: "zona",
     position: "top",
@@ -524,21 +627,22 @@ function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApp
       align: "start" as const,
       caption: "Homologación de acuerdo a:",
       rows: [
-        { label: `${page.baseArea}:`, value: settings.baseArea ? squareMetres(settings.baseArea) : EMPTY, mark: againstBase },
-        { label: `${page.subject}:`, value: squareMetres(subjectArea), mark: !againstBase },
+        { label: `${specLabel(settings, "baseArea", page.baseArea)}:`, value: settings.baseArea ? squareMetres(settings.baseArea) : EMPTY, mark: againstBase },
+        { label: `${specLabel(settings, "subjectArea", page.subject)}:`, value: squareMetres(subjectArea), mark: !againstBase },
       ],
     }] : []),
     ...(zone.rows.length ? [zone] : []),
   ];
   if (!result || !subjectArea) return boxes;
 
-  const subjectLabel = MARKET_LABELS[settings.comparableType].subjectArea.replace(" (m²)", "");
+  const subjectLabel = specLabel(settings, "subjectArea", MARKET_LABELS[settings.comparableType].subjectArea.replace(" (m²)", ""));
   // The engine's own subtotal: area × adopted value, as the books, with or without a lote tipo.
   const subtotal = subjectArea * result.adoptedUnitValue;
   const stats = result.homologation.stats;
-  // The statistics the appraiser marked, in the order chosen; the rows carry their key once the choice is the appraiser's.
-  const chosen = Boolean(settings.printedStatistics);
-  const statisticRow = (key: MarketStatistic): TableSummaryRow => {
+  const homologated = result.homologation.comparables.map((row) => row.homologatedUnitValue);
+  // The statistics the appraiser marked, in the order chosen; each row carries its key, so its name follows it.
+  const choice = printedStatisticsOf(settings);
+  const statisticRow = (key: StatisticKey): TableSummaryRow => {
     const rows: Record<MarketStatistic, Omit<TableSummaryRow, "id">> = {
       offerMin: { label: `Mínimo de oferta (${page.unit}):`, value: money(stats.offerMin) },
       offerMax: { label: `Máximo de oferta (${page.unit}):`, value: money(stats.offerMax) },
@@ -549,7 +653,12 @@ function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApp
       mean: { label: `${page.mean} (${page.unit}):`, value: money(stats.mean) },
       median: { label: `${page.median} (${page.unit}):`, value: money(stats.median) },
     };
-    return chosen ? { id: key, ...rows[key] } : rows[key];
+    const own = choice.labels?.[key]?.trim();
+    const extra = choice.extra?.find((item) => item.id === key);
+    const row: Omit<TableSummaryRow, "id"> = extra
+      ? { label: `${own || extra.label}:`, value: extraStatisticText(extra, stats, homologated) ?? EMPTY }
+      : { ...rows[key as MarketStatistic], ...(own ? { label: `${own}:` } : {}) };
+    return { id: key, ...row };
   };
   const shown = shownStatistics(settings);
   boxes.push(
@@ -562,7 +671,7 @@ function homologationBoxes({ settings }: MarketCalculationDto, result: MarketApp
       align: "end",
       rows: [
         ...shown.filter((key) => STATISTICS_BESIDE_ADOPTED.has(key)).map(statisticRow),
-        { ...(chosen ? { id: "adoptado" } : {}), label: `${page.adopted} (${page.unit}):`, value: money(result.adoptedUnitValue), emphasis: "strong" },
+        { id: "adoptado", label: `${page.adopted} (${page.unit}):`, value: money(result.adoptedUnitValue), emphasis: "strong" },
       ],
     },
     {
@@ -595,6 +704,16 @@ export function marketPhotoBlocks(calculation: MarketCalculationDto): Block[] {
   if (!images.length) return [];
   const prefix = prefixFor(calculation.settings.comparableType);
   return [generatedBlock(`${prefix}-fotos`, `FOTOGRAFÍAS DE COMPARABLES: ${COMPARABLE_TYPE_LABELS[calculation.settings.comparableType].toUpperCase()}`, { images })];
+}
+
+/** The page of a market's approach: its name is the appraiser's once he renames it (video 8.7: «que sea modificable el nombre»). */
+export const isRenamableGeneratedTitle = (blockId: string) => /^motor-mercado-[a-z_]+-enfoque$/i.test(blockId);
+
+/** The block with the name the appraiser gave it, when it is one of those he names; the calculation writes the rest. */
+function withAppraiserTitle(block: Block, previous: Block | undefined): Block {
+  if (!previous || !isRenamableGeneratedTitle(block.id)) return block;
+  const own = previous.title.trim();
+  return own && own.toLocaleUpperCase("es-MX") !== block.title.trim().toLocaleUpperCase("es-MX") ? { ...block, title: own } : block;
 }
 
 /**
@@ -639,7 +758,7 @@ export function replaceGeneratedBlocks(
   const previous = new Map(current.map((item) => [item.id.toLowerCase(), item]));
   // The columns the appraiser hid, renamed or added stay on the tables the calculation writes again,
   // and so do his own tables in the block and how its tables are laid out (side by side, their order).
-  const laidOut = withTableLayouts(blocks, current).map((item) => withAppraiserLayout(item, previous.get(item.id.toLowerCase())));
+  const laidOut = withTableLayouts(blocks, current).map((item) => withAppraiserTitle(withAppraiserLayout(item, previous.get(item.id.toLowerCase())), previous.get(item.id.toLowerCase())));
   if (sameContent(current, laidOut) && !section.blocks.some(isPlaceholder)) return section;
   // What the appraiser chose for a block stays when the calculation writes it again: hidden, its page break and orientation.
   const written = laidOut.map((item) => withBlockPresentation(item, previous.get(item.id.toLowerCase())));

@@ -32,6 +32,8 @@ export type CalculatedTableLock = {
   inPlace?: boolean;
   /** The place of a column among the ones the calculation wrote; -1 for the appraiser's. */
   columnPlace?: (columnId: string) => number;
+  /** A column of the calculation the appraiser may take out («Eliminar columna», video 8.9); the rest are hidden, not deleted. */
+  removable?: (columnId: string) => boolean;
   /**
    * A capture table of the construction section: its rows are the
    * appraiser's (inserted, duplicated, moved and deleted) and only the
@@ -63,7 +65,7 @@ export function calculatedColumnReasons(lock: CalculatedTableLock | null, column
   return {
     "sort-asc": CALCULATED_SORT_HINT,
     "sort-desc": CALCULATED_SORT_HINT,
-    ...(lock.column(columnId) ? { "delete-column": CALCULATED_COLUMN_HINT } : {}),
+    ...(lock.column(columnId) && !lock.removable?.(columnId) ? { "delete-column": CALCULATED_COLUMN_HINT } : {}),
   };
 }
 
@@ -84,7 +86,7 @@ export function calculatedCellReasons(lock: CalculatedTableLock | null, rowId: s
   if (lock.capture) return captureColumnReasons(lock, columnId);
   const reasons: MenuReasons = {
     ...(lock.row(rowId) ? { "delete-row": CALCULATED_ROW_HINT } : {}),
-    ...(lock.column(columnId) ? { "delete-column": CALCULATED_COLUMN_HINT } : {}),
+    ...(lock.column(columnId) && !lock.removable?.(columnId) ? { "delete-column": CALCULATED_COLUMN_HINT } : {}),
   };
   return Object.keys(reasons).length ? reasons : undefined;
 }

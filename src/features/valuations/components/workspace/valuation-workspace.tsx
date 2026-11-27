@@ -66,7 +66,7 @@ import { COMPARABLE_TYPES, RENT_COMPARABLE_TYPES, SALE_COMPARABLE_TYPES } from "
 import { findSubjectFacts } from "@/features/valuations/calculation/market-subject-facts";
 import { hiddenMarketBlocks, withMarketBlocksShown, type ActiveMarket } from "@/features/valuations/components/workspace/model/active-market";
 import { getCanonicalSectionKey } from "@/features/valuations/sections/section-registry";
-import { approachIncluded, excludedReportApproaches, previewSectionForReport, withApproachIncluded, type ReportApproach } from "@/features/valuations/services/report-approaches";
+import { approachIncluded, excludedReportApproaches, marketReportApproach, previewSectionForReport, withApproachIncluded, type ReportApproach } from "@/features/valuations/services/report-approaches";
 import type { SectionCaptureHeaders } from "@/features/valuations/services/capture-headers";
 import {
   canRemoveSection,
@@ -519,6 +519,12 @@ export function ValuationWorkspace({
     included: approachIncluded(section, approach),
     onIncludedChange: (included: boolean) => updateSection(section.id, { excludedFromReport: withApproachIncluded(section, approach, included) }),
   });
+  // «Quitar este mercado» and «Agregar mercado» of the market panels: the section's «Agregar al informe valuatorio» of that market (video 8.7, 06:40).
+  const marketReportOf = (section: AppSection) => ({
+    included: (type: ActiveMarket["type"]) => approachIncluded(section, marketReportApproach(type)),
+    onIncludedChange: (type: ActiveMarket["type"], included: boolean) =>
+      updateSection(section.id, { excludedFromReport: withApproachIncluded(section, marketReportApproach(type), included) }),
+  });
   // The headers of the panel's capture tables, kept with the section and saved with the document.
   const captureHeadersOf = (section: AppSection) => ({
     captureHeaders: section.captureHeaders,
@@ -550,6 +556,7 @@ export function ValuationWorkspace({
                 onCalculation={calculationSync.onMarketCalculation}
                 onActiveChange={(type) => setActiveMarket(section.id, { type }, SALE_COMPARABLE_TYPES[0])}
                 {...marketBlocksOf(section)}
+                report={marketReportOf(section)}
               />
             ) : !machinery && getCanonicalSectionKey(section.id) === "METODOS_ALTERNATIVOS" ? (
               // Every market's alternative methods in their own section (V7.3-19), one tab per market.
@@ -581,6 +588,7 @@ export function ValuationWorkspace({
                 onCalculation={calculationSync.onMarketCalculation}
                 onActiveChange={(type) => setActiveMarket(section.id, { type }, RENT_COMPARABLE_TYPES[0])}
                 {...marketBlocksOf(section)}
+                report={marketReportOf(section)}
               />
             ) : getCanonicalSectionKey(section.id) === "INGRESOS" ? (
               <IncomeCalculationPanel valuationId={valuationId} readOnly={!canEdit} onCalculation={calculationSync.onIncomeCalculation} approach={approachInReport(section, "ingresos")} {...captureHeadersOf(section)} />
@@ -601,7 +609,6 @@ export function ValuationWorkspace({
             onAddApartado={blocks.addApartado}
             onAddSubConcept={blocks.addSubConcept}
             onAddTable={tables.addTable}
-            onAddHomologationTable={tables.addHomologationTable}
             onAddTableColumn={tables.addTableColumn}
             onAddTableRow={tables.addTableRow}
             onBlockDragEnd={blocks.onBlockDragEnd}

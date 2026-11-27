@@ -152,7 +152,8 @@ function marketPages(calculation: MarketCalculationDto, capture: boolean) {
 }
 
 test("mercado: factors, the adopted value and each comparable's data are captured in the tables of the page", () => {
-  const calculation = market();
+  // With the offer level marked: the capture always has its place, the dictamen prints it once marked.
+  const calculation = market({ offerMark: 3 });
   const captured = marketPages(calculation, true);
   assert.deepEqual(captured, marketPages(calculation, false), "the page of the capture is the page of the dictamen");
   const at = marketCaptureColumns(calculation);

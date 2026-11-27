@@ -43,6 +43,12 @@ export type GeneratedColumn = {
   group?: string;
   /** Printed in bold: the resultant factors. */
   strong?: boolean;
+  /**
+   * An id of its own: a column added after the table's first version keeps
+   * the others at their place ids (col-1, col-2…), so what the appraiser set
+   * on them (names, widths, hidden) stays on the same columns.
+   */
+  id?: string;
 };
 
 /** A column of text. */
@@ -97,7 +103,9 @@ export function generatedTable(
     widthMode?: "content";
   } = {},
 ): TableContent {
-  const columnIds = columns.map((_, index) => generatedColumnId(index));
+  // The columns without an id of their own take the id of their place among them.
+  let placed = 0;
+  const columnIds = columns.map((column) => column.id ?? generatedColumnId(placed++));
   const zones: StructuralZone[] = [];
   const headerGroups: HeaderGroup[] = [];
   if (columns.some((column) => column.group)) {

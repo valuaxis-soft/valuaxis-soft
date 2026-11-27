@@ -20,6 +20,7 @@ import {
   layoutFromTable,
   layoutOf,
   sourceOf,
+  withColumnRestored,
   withTableLayouts,
 } from "../src/features/valuations/calculation/generated-table-layout";
 import { replaceGeneratedBlocks } from "../src/features/valuations/calculation/market-document";
@@ -130,11 +131,18 @@ test("typing over a figure of the calculation is dropped: the cell stays what th
   const first = ensureTableV2(table).rows[0].id;
   const typed = edit(table, (v2) => ({ ...v2, rows: v2.rows.map((row) => (row.id === first ? { ...row, cells: { ...row.cells, [fre]: { kind: "value", value: "9.99" } } } : row)) }));
   assert.equal((ensureTableV2(typed).rows[0].cells[fre] as { value: string }).value, "0.72");
-  // A column of the calculation taken out is hidden, never lost.
+  // A column of the calculation taken out («Eliminar columna», video 8.9) leaves the table and the dictamen, but is never lost:
+  // the table keeps what the calculation wrote in it, and «Volver a mostrar» puts it back where it was.
   const removed = edit(table, (v2) => removeTableColumn(v2, fre));
-  assert.deepEqual(ensureTableV2(removed).schema?.hiddenColumns, [fre]);
+  assert.deepEqual(layoutOf(removed).removed, [fre]);
   assert.equal(printedNames(removed).includes("FRe"), false);
-  assert.ok(ensureTableV2(removed).columns.some((column) => column.id === fre));
+  assert.equal(ensureTableV2(removed).columns.some((column) => column.id === fre), false, "not shown in the editor either");
+  assert.ok(sourceOf(removed).columns.some((column) => column.id === fre));
+  const back = applyTableLayout(sourceOf(removed), withColumnRestored(layoutOf(removed), fre));
+  assert.deepEqual(getDisplayColumns(ensureTableV2(back)).map((column) => column.id), getDisplayColumns(ensureTableV2(table)).map((column) => column.id));
+  // A later edit keeps it out.
+  const again = edit(removed, (v2) => ({ ...v2, title: "Construcciones" }));
+  assert.deepEqual(layoutOf(again).removed, [fre]);
 });
 
 test("recalculating keeps everything the appraiser set, and his formula reads the new figures", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, createContext, useCallback, useContext, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { Fragment, createContext, useCallback, useContext, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { toast } from "sonner";
 import type { TableContent } from "@/features/valuations/model";
@@ -123,6 +123,7 @@ import {
   notifyCaptureWrite,
   pasteCaptureRange,
   useCaptureDeclared,
+  useCaptureRowSlots,
 } from "./capture-host";
 import { writeCaptureCell } from "../calculation/calc-table-context-menu";
 import { CALC_HEAD, EDITOR_SHADED_ROW, EDITOR_ZEBRA_ROW } from "../calculation/calculation-table-style";
@@ -174,6 +175,7 @@ import {
   type DragOverEvent,
 } from "@dnd-kit/core";
 import { editorCanScroll } from "./editor-dnd-autoscroll";
+import { TableNotesEditor, homologationNoteSuggestion } from "./table-notes-editor";
 import {
   SortableContext,
   useSortable,
@@ -248,12 +250,14 @@ const NO_SUGGESTIONS: string[] = [];
 const MISSING_FIGURE = "—";
 const MISSING_DATA_HINT = "Falta un dato de este renglón: captúralo en las celdas en blanco y la cifra se calcula.";
 /** Narrowest a column gets in the editor, in characters, before the table scrolls sideways: a short header ("Clas", "Re") stays whole. */
-const EDITOR_MIN_COLUMN_CHARS = 8;
-/** About what a character of the editor's cells takes, and what a header's handle, letter and menu take. */
+const EDITOR_MIN_COLUMN_CHARS = 5;
+/** About what a character of the editor's cells takes, and the cell's margins: the handle, letter and menu go over the header's name. */
 const EDITOR_CHAR_PX = 7.5;
-const EDITOR_HEADER_CHROME_PX = 68;
+const EDITOR_HEADER_CHROME_PX = 22;
 /** The row number at the left and the row handle at the right. */
 const EDITOR_ROW_CHROME_PX = 56;
+/** The end of the rows when the capture puts its actions there (the handle and «Ver ficha» and «Eliminar»). */
+const ROW_ACTIONS_PX = 330;
 
 /** Enters the cell at a row and column of a table as shown, when there is one: Enter goes down, Shift+Enter up. */
 function focusTableCell(tableId: string, rowIndex: number, columnIndex: number) {
@@ -478,9 +482,11 @@ function SortableColumnHeader({
 
   // Local draft state — typing is free, normalization happens only on commit
   const [draftName, setDraftName] = useState(column.name);
-  const [draftColumnId, setDraftColumnId] = useState(column.id);
-  if (draftColumnId !== column.id) {
-    setDraftColumnId(column.id);
+  // The draft follows the column and its name: a name the calculation changes (a factor added before it) shows at once.
+  const source = `${column.id}\u0000${column.name}`;
+  const [draftSource, setDraftSource] = useState(source);
+  if (draftSource !== source) {
+    setDraftSource(source);
     setDraftName(column.name);
   }
 
@@ -538,9 +544,10 @@ function SortableColumnHeader({
     >
       <ContextMenu>
         <ContextMenuTrigger>
+          {/* The handle, the letter and the menu over the name, not beside it: a column is as wide as what it holds (video 8.9, 06:26: «los factores podrían ser por mitad de tamaño»). */}
           <div
             className={cn(
-              "flex min-w-0 items-start gap-1 rounded-sm border px-1.5 py-1 transition-colors",
+              "grid min-w-0 grid-cols-[auto_auto_minmax(0,1fr)_auto] items-center gap-x-0.5 rounded-sm border px-1 py-0.5 transition-colors",
               // Every table shows its headers as the dictamen prints them: in the palette of the valuation (video 8.12, 25:50).
               CALC_HEAD, "border-transparent [&_textarea]:text-inherit",
               isOver && !isDragging && "border-blue-400 bg-blue-50 dark:bg-blue-500/15",
@@ -556,7 +563,7 @@ function SortableColumnHeader({
                 ref={setActivatorNodeRef}
                 {...attributes}
                 {...listeners}
-                className="mt-1 shrink-0 cursor-grab touch-none"
+                className="col-start-1 row-start-1 shrink-0 cursor-grab touch-none"
                 data-column-grip=""
                 aria-label={`Arrastrar la columna ${columnName}`}
                 title="Arrastra para mover la columna"
@@ -566,7 +573,7 @@ function SortableColumnHeader({
             )}
             {/* The letter selects the whole column, as a spreadsheet's (Shift and Ctrl/⌘ join it to the selection). */}
             <span
-              className={cn("mt-1 shrink-0 cursor-pointer select-none rounded-sm px-0.5 font-mono text-[10px] text-muted-foreground/70 hover:bg-primary/15 hover:text-foreground", selected && "text-primary")}
+              className={cn("col-start-2 row-start-1 shrink-0 cursor-pointer select-none rounded-sm px-0.5 font-mono text-[10px] text-muted-foreground/70 hover:bg-primary/15 hover:text-foreground", selected && "text-primary")}
               title={`Columna ${letter} en las fórmulas. Clic: seleccionar la columna`}
               data-select-column={columnIndex}
               onMouseDown={(event) => selection?.api.onColumnPointer(columnIndex, event)}
@@ -576,7 +583,7 @@ function SortableColumnHeader({
             {/* A long header takes a second line instead of widening the column; Alt+Enter breaks it where wanted. */}
             <textarea
               aria-label={`Encabezado de la columna ${columnName}`}
-              className="field-sizing-content min-h-6 min-w-[3ch] flex-1 resize-none overflow-hidden border-0 bg-transparent px-0.5 py-0.5 text-xs leading-tight font-semibold wrap-break-word outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed"
+              className="col-span-4 row-start-2 w-full field-sizing-content min-h-5 min-w-0 resize-none overflow-hidden border-0 bg-transparent px-0.5 py-0.5 text-xs leading-tight font-semibold wrap-break-word outline-none focus-visible:ring-2 focus-visible:ring-ring/50 disabled:cursor-not-allowed"
               rows={1}
               disabled={readOnly || capability.headerEditable === false}
               value={draftName}
@@ -606,7 +613,7 @@ function SortableColumnHeader({
                       type="button"
                       size="icon-sm"
                       variant="ghost"
-                      className="h-5 w-5 shrink-0 text-muted-foreground"
+                      className="col-start-4 row-start-1 h-4 w-4 shrink-0 justify-self-end text-muted-foreground"
                       aria-label={`Opciones de la columna ${columnName}`}
                       title="Opciones de la columna"
                     />
@@ -776,6 +783,23 @@ function EditableTableCell({
     },
   });
   const reference = useFormulaReferenceTarget(fieldKey, (homeTableId) => cellReferenceText(index, tableId, tableV2, row.id, column.id, homeTableId));
+  // The field of a capture is its panel's (a portal): React hands its clicks to the panel, not to this cell. While a
+  // formula is being written, a click on it writes this cell's reference, as on any cell (video 8.7: «se abre el editor»).
+  const referenceHandler = useRef(reference.onMouseDownCapture);
+  useLayoutEffect(() => {
+    referenceHandler.current = reference.onMouseDownCapture;
+  });
+  const captureCellRef = useCallback((element: HTMLTableCellElement | null) => {
+    if (!element) return undefined;
+    const onDown = (event: MouseEvent) => {
+      const handler = referenceHandler.current;
+      const slot = element.querySelector("[data-capture-slot]");
+      if (!handler || !slot || !(event.target instanceof Node) || !slot.contains(event.target)) return;
+      handler(event as unknown as Parameters<NonNullable<typeof handler>>[0]);
+    };
+    element.addEventListener("mousedown", onDown, true);
+    return () => element.removeEventListener("mousedown", onDown, true);
+  }, []);
   // A formula without a number (it divides by zero, reads an empty or deleted cell): an amber warning; the dictamen prints «—».
   const noNumber = Boolean(result && !result.ok);
   // The «—» of the calculation is not letters typed in a figure: it is a datum still missing in the row.
@@ -1014,12 +1038,13 @@ function EditableTableCell({
       data-numeric-problem={numericProblem ?? undefined}
       onClick={() => formulaMode ? onFormulaCellClick(row.id, column.id) : undefined}
       onMouseDownCapture={reference.onMouseDownCapture}
+      ref={captured ? captureCellRef : undefined}
     >
       <ContextMenu>
         <ContextMenuTrigger>
           {captured ? (
             // The field of the calculation's capture, in the cell of its datum: typed here, it is the calculation's.
-            <CaptureSlotTarget address={captureAddress} className="flex min-h-7 min-w-0 items-center [&_input]:min-w-16" />
+            <CaptureSlotTarget address={captureAddress} className="flex min-h-7 min-w-0 items-center [&_input]:min-w-12" />
           ) : (
           <div className="relative flex h-7 items-center">
             <div
@@ -1469,12 +1494,13 @@ export function TableEditorItem({
   }, [table.id, onUpdate]);
 
   const ctxDeleteColumn = useCallback((columnId: string) => {
-    // A column with something written is only deleted on purpose; formulas that read it will show #REF!.
-    if (columnHasData(tableV2, columnId)) {
+    // A column with something written is only deleted on purpose; formulas that read it will show #REF!. One the calculation
+    // writes is only taken out (video 8.9): it comes back with «Volver a mostrar» under the table or Ctrl+Z.
+    if (columnHasData(tableV2, columnId) && !calculated?.column(columnId)) {
       if (!window.confirm(`${columnName(columnId)} tiene datos. ¿Eliminar la columna y lo que contiene?`)) return;
     }
     onUpdate(table.id, v2Updater((v2) => removeTableColumn(v2, columnId)));
-  }, [table.id, tableV2, columnName, onUpdate]);
+  }, [table.id, tableV2, columnName, onUpdate, calculated]);
 
   const handleColumnAction = useCallback<ColumnActionHandler>((columnId, action, format) => {
     switch (action) {
@@ -1578,7 +1604,9 @@ export function TableEditorItem({
   const totalPixels = columnPixels.reduce((total, pixels) => total + pixels, 0) || 1;
   const widthOf = new Map(displayColumns.map((column, index) => [column.id, columnPixels[index]]));
   const getColumnWidth = (columnId: string): CSSProperties => ({ width: `${((widthOf.get(columnId) ?? 0) / totalPixels) * 100}%` });
-  const tableMinWidth = totalPixels + EDITOR_ROW_CHROME_PX;
+  // A capture that puts actions at the end of each row («Ver ficha», «Eliminar») gets their room there.
+  const rowActions = useCaptureRowSlots(table.id);
+  const tableMinWidth = totalPixels + EDITOR_ROW_CHROME_PX + (rowActions ? ROW_ACTIONS_PX - 32 : 0);
 
   const headerProps = (columnId: string) => ({
     column: tableV2.columns.find((c) => c.id === columnId)!,
@@ -1847,7 +1875,7 @@ export function TableEditorItem({
                 {displayColumns.map((col) => (
                   <col key={col.id} style={getColumnWidth(col.id)} />
                 ))}
-                <col className="w-8" />
+                <col className={rowActions ? undefined : "w-8"} style={rowActions ? { width: ROW_ACTIONS_PX } : undefined} />
               </colgroup>
               <TableHeader>
                 {/* Every column header moves among all the others, in either header row. */}
@@ -1942,6 +1970,16 @@ export function TableEditorItem({
       </div>
 
       {footer}
+
+      {/* The notes printed with the table, written in place and in the size of the text (video 8.7); the calculation's tables keep theirs in their layout. */}
+      {!calculated ? (
+        <TableNotesEditor
+          notes={tableV2.schema?.notes ?? []}
+          readOnly={readOnly}
+          suggestion={homologationNoteSuggestion(tableV2)}
+          onChange={(notes) => onUpdate(table.id, v2Updater((v2) => ({ ...v2, schema: { ...(v2.schema ?? { zones: [] }), notes } })))}
+        />
+      ) : null}
 
       {/* Result groups */}
       {tableV2.schema?.resultGroups && tableV2.schema.resultGroups.length > 0 && (

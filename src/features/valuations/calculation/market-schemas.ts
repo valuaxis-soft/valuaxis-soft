@@ -15,6 +15,9 @@ import {
   COMPARABLE_TYPES,
   CUSTOM_CHARACTERISTIC_KEY,
   CUSTOM_FACTOR_KEY,
+  EXTRA_STATISTIC_KEY,
+  EXTRA_STATISTIC_KINDS,
+  MAX_EXTRA_STATISTICS,
   FACTOR_TYPES,
   HOMOLOGATION_BASES,
   MAX_CHARACTERISTIC_FIELDS,
@@ -24,6 +27,7 @@ import {
   MAX_OFFER_OPTIONS,
   OFFER_LEVELS,
   factorKey,
+  type StatisticKey,
 } from "./market-types";
 
 const text = (max: number) => z.string().trim().max(max).nullable().transform((value) => value || null);
@@ -52,6 +56,17 @@ const characteristicKey = z.string().refine(
   (key) => (BUILTIN_CHARACTERISTICS as readonly string[]).includes(key) || CUSTOM_CHARACTERISTIC_KEY.test(key),
   "Característica inválida.",
 );
+/** A statistic of the box: the homologation's or one of the appraiser's. */
+const statisticKeyName = z.string().refine(
+  (key) => (MARKET_STATISTICS as readonly string[]).includes(key) || EXTRA_STATISTIC_KEY.test(key),
+  "Estadístico inválido.",
+);
+const statisticKey = statisticKeyName.transform((key) => key as StatisticKey);
+/** A datum of the card, or a name of the specifications ("spec.frontage"). */
+const fieldLabelKey = z.string().regex(/^(spec\.)?[A-Za-z][A-Za-z0-9]{0,40}$/, "Dato inválido.");
+/** A datum of the card shown as a column: one of the card's, or a characteristic. */
+const linkedFieldKey = z.string().regex(/^([A-Za-z][A-Za-z0-9]{0,40}|custom:[a-z0-9-]{1,40})$/, "Dato inválido.");
+const MAX_LINKED_COLUMNS = 12;
 /** Values of the characteristics by field key; empty ones are not kept. */
 const characteristicValues = z.record(characteristicKey, z.string().trim().max(300))
   .transform((values) => Object.fromEntries(Object.entries(values).filter(([, value]) => value)))
@@ -230,8 +245,22 @@ export const marketSettingsSchema = z.object({
   homologationNote: text(500).optional(),
   homologate: z.boolean().optional(),
   printedStatistics: z.object({
-    order: z.array(z.enum(MARKET_STATISTICS)).max(MARKET_STATISTICS.length),
-    hidden: z.array(z.enum(MARKET_STATISTICS)).max(MARKET_STATISTICS.length),
+    order: z.array(statisticKey).max(MARKET_STATISTICS.length + MAX_EXTRA_STATISTICS),
+    hidden: z.array(statisticKey).max(MARKET_STATISTICS.length + MAX_EXTRA_STATISTICS),
+    labels: z.record(statisticKeyName, z.string().trim().max(80)).optional(),
+    extra: z.array(z.object({
+      id: z.string().regex(EXTRA_STATISTIC_KEY, "Estadístico inválido."),
+      label: z.string().trim().min(1, "Cada estadístico necesita un nombre.").max(80),
+      kind: z.enum(EXTRA_STATISTIC_KINDS),
+      formula: z.string().trim().max(300).nullable().optional(),
+    })).max(MAX_EXTRA_STATISTICS, `Hasta ${MAX_EXTRA_STATISTICS} estadísticos propios.`).optional(),
+  }).nullable().optional(),
+  // The names of the card's data in this market and the data shown as columns of its tables (video 8.9).
+  fieldLabels: z.record(fieldLabelKey, z.string().trim().max(60)).nullable().optional(),
+  linkedColumns: z.object({
+    caracteristicas: z.array(linkedFieldKey).max(MAX_LINKED_COLUMNS).optional(),
+    ofertas: z.array(linkedFieldKey).max(MAX_LINKED_COLUMNS).optional(),
+    homologacion: z.array(linkedFieldKey).max(MAX_LINKED_COLUMNS).optional(),
   }).nullable().optional(),
   factorSlots: z.array(z.object({
     type: z.enum(FACTOR_TYPES),

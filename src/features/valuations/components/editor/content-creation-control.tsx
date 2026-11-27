@@ -26,7 +26,6 @@ export function ContentCreationControl({
   onAddCroquis,
   onAddImage,
   onAddTable,
-  onAddHomologationTable,
   readOnly,
 }: {
   capabilities: {
@@ -43,7 +42,6 @@ export function ContentCreationControl({
   onAddCroquis?: () => void;
   onAddImage?: (event: ChangeEvent<HTMLInputElement>) => void;
   onAddTable?: () => void;
-  onAddHomologationTable?: () => void;
   readOnly: boolean;
 }) {
   const [open, setOpen] = useState(false);
@@ -137,19 +135,6 @@ export function ContentCreationControl({
                 <Columns3 data-icon="inline-start" />
                 Tabla
               </Button>
-              {onAddHomologationTable ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  className="h-10 justify-start text-sm"
-                  disabled={readOnly}
-                  onClick={onAddHomologationTable}
-                >
-                  <Columns3 data-icon="inline-start" />
-                  Tabla Homologación
-                </Button>
-              ) : null}
             </>
           ) : null}
         </div>
@@ -168,7 +153,6 @@ export function ActionStrip({
   onAddImage,
   onAddApartado,
   onAddTable,
-  onAddHomologationTable,
   readOnly,
   subBlockLabel,
 }: {
@@ -180,7 +164,6 @@ export function ActionStrip({
   onAddImage: (event: ChangeEvent<HTMLInputElement>) => void;
   onAddApartado: () => void;
   onAddTable: () => void;
-  onAddHomologationTable?: () => void;
   readOnly: boolean;
   subBlockLabel: string;
 }) {
@@ -196,7 +179,6 @@ export function ActionStrip({
         readOnly={readOnly}
         onAddImage={onAddImage}
         onAddTable={onAddTable}
-        onAddHomologationTable={onAddHomologationTable}
       />
       <Button
         type="button"

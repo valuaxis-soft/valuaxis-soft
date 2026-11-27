@@ -30,7 +30,14 @@ import { DEFAULT_ENGINE_CONFIG, EXCEL_PROFILES } from "../src/features/valuation
 import { computeMarketApproach } from "../src/features/valuations/engine/market";
 import type { AppSection, TableContent } from "../src/features/valuations/model";
 import { ensureTableV2 } from "../src/features/valuations/services/table";
-import { moveSlot } from "../src/features/valuations/components/calculation/market-factor-slots";
+/** The factors in another order, as moving their columns gives them. */
+function moveSlot<T>(slots: T[], from: number, to: number) {
+  if (from === to || to < 0 || to >= slots.length) return slots;
+  const next = [...slots];
+  const [slot] = next.splice(from, 1);
+  next.splice(to, 0, slot);
+  return next;
+}
 
 function comparable(reference: number, area: number, price: number, factors: ComparableDto["factors"] = []): ComparableDto {
   return {
@@ -85,8 +92,8 @@ test("land for rent is a market of its own, with its wording and its pages", () 
   assert.equal(block.title, "MERCADO DE RENTAS (TERRENOS)");
   assert.deepEqual(block.apartados.map((apartado) => apartado.title), ["DATOS DE COMPARABLES (TERRENOS EN RENTA)", "HOMOLOGACIÓN (RENTAS DE TERRENOS)"]);
   const offers = printed(block.apartados[0].tables[1]);
-  assert.deepEqual(offers.columns.slice(3), ["FECHA", "SUPERFICIE DE TERRENO (m²)", "RENTA MENSUAL $", "$/m²/mes"], "land gives the offer date");
-  assert.match(printed(block.apartados[0].tables[0]).rows[0][3], /SUPERFICIE: 140\.00 m² ; SERVICIOS: Completos ; RENTA MENSUAL: \$1,260,000\.00$/);
+  assert.deepEqual(offers.columns.slice(3), ["CONTACTO", "FECHA DE LA OFERTA", "SUPERFICIE DE TERRENO (m²)", "RENTA MENSUAL $", "$/m²/mes"], "land gives the offer date");
+  assert.match(printed(block.apartados[0].tables[0]).rows[0][4], /SUPERFICIE: 140\.00 m² ; SERVICIOS: Completos ; RENTA MENSUAL: \$1,260,000\.00$/);
   const valueBox = printed(block.apartados[1].tables[0]).schema?.summaryBoxes?.find((box) => box.id === "valor");
   assert.equal(valueBox?.rows.at(-1)?.label, "RENTA MENSUAL ESTIMADA DEL TERRENO:");
 });
@@ -370,11 +377,11 @@ test("the characteristics follow the appraiser's list: renamed, removed, added, 
     comparables: [first, { ...land.comparables[1], characteristicsText: "Lote en esquina con dos frentes." }, ...land.comparables.slice(2)],
   };
   const rows = printed(marketDocumentBlocks(target, null)[0].apartados[0].tables[0]).rows;
-  assert.equal(rows[0][3], "FORMA DEL LOTE: Regular ; VISTA: Al parque ; SUPERFICIE: 140.00 m²");
-  assert.equal(rows[1][3], "Lote en esquina con dos frentes.", "his own text instead of the line");
+  assert.equal(rows[0][4], "FORMA DEL LOTE: Regular ; VISTA: Al parque ; SUPERFICIE: 140.00 m²");
+  assert.equal(rows[1][4], "Lote en esquina con dos frentes.", "his own text instead of the line");
   // A field taken off the list stops printing; what was captured stays with the comparable.
   assert.equal(target.comparables[0].zone, "Calle Tipo");
-  assert.doesNotMatch(rows[0][3], /ZONA/);
+  assert.doesNotMatch(rows[0][4], /ZONA/);
 });
 
 test("the characteristics, the justification and the offer grid do not reach the engine", () => {

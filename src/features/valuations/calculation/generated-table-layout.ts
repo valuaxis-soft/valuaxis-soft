@@ -21,6 +21,8 @@ import {
   type GeneratedExtraColumn,
   type GeneratedExtraRow,
   type GeneratedHeaderGroup,
+  type GeneratedTableNote,
+  type TableNote,
   type GeneratedTableLayout,
   type HeaderGroup,
   type StructuralZone,
@@ -252,7 +254,9 @@ export function applyTableLayout(table: TableContent | TableV2, layout: Generate
   const extras = (layout.extraColumns ?? []).slice(0, MAX_EXTRA_COLUMNS);
   const label = (id: string, name: string) => labels[id]?.trim() || name;
 
-  const ordered = orderedColumns(source, extras, layout.order);
+  // A column taken out is not shown nor printed; the table keeps what the calculation wrote in it.
+  const removed = new Set(layout.removed ?? []);
+  const ordered = orderedColumns(source, extras, layout.order).filter((column) => !removed.has(column.id));
   const columnIds = ordered.map((column) => column.id);
   const columns: TableColumn[] = ordered.map((column) => {
     if (isExtra(column)) return { id: column.id, name: column.name.trim() || "Nueva columna", ...(column.format ? { format: column.format } : {}) };
@@ -294,9 +298,10 @@ export function applyTableLayout(table: TableContent | TableV2, layout: Generate
   const rowIds = new Set(rows.map((row) => row.id));
   const hiddenRows = (layout.hiddenRows ?? []).filter((id) => rowIds.has(id));
   const summaryBoxes = schema.summaryBoxes ? relabeledBoxes(schema.summaryBoxes, layout) : undefined;
+  const notes = layout.notes ? tableNotesOf(source, layout).map(({ key: _key, edited: _edited, removed: _removed, ...note }) => note) : schema.notes;
   const {
     generated: _previous, widthMode: sourceWidth, decimals: sourceDecimals, hideCaption: sourceHideCaption,
-    headerGroups: _sourceGroups, hiddenColumns: _hiddenColumns, hiddenRows: _hiddenRows, columnPresentation: _presentation, ...rest
+    headerGroups: _sourceGroups, hiddenColumns: _hiddenColumns, hiddenRows: _hiddenRows, columnPresentation: _presentation, notes: _notes, ...rest
   } = schema;
   const { schema: _sourceSchema, ...plainSource } = source;
   // "Formato de la tabla": what was chosen wins over the calculation's; the decimals only change how its figures print.
@@ -324,6 +329,7 @@ export function applyTableLayout(table: TableContent | TableV2, layout: Generate
       ...(hiddenColumns.length ? { hiddenColumns } : {}),
       ...(hiddenRows.length ? { hiddenRows } : {}),
       ...(summaryBoxes ? { summaryBoxes } : {}),
+      ...(notes?.length ? { notes } : {}),
       generated: { source: { ...plainSource, ...(source.schema ? { schema: withoutGenerated(source.schema) } : {}) }, layout },
     },
   } as unknown as TableContent;
@@ -394,13 +400,14 @@ export function layoutFromTable(source: TableV2, shown: TableV2, previous: Gener
 
   if (filled(previous.boxLabels)) layout.boxLabels = previous.boxLabels;
   if (filled(previous.boxRows)) layout.boxRows = previous.boxRows;
+  if (previous.notes) layout.notes = previous.notes;
   if (shown.title.trim() && shown.title.trim() !== source.title.trim()) layout.title = shown.title.trim();
 
-  const hidden = [
-    ...(shown.schema?.hiddenColumns ?? []).filter((id) => shownIds.has(id)),
-    ...sourceColumns.filter((column) => !shownIds.has(column.id)).map((column) => column.id),
-  ];
+  const hidden = (shown.schema?.hiddenColumns ?? []).filter((id) => shownIds.has(id));
   if (hidden.length) layout.hidden = [...new Set(hidden)];
+  // A column of the calculation the editor no longer has was taken out («Eliminar columna»): it stays out.
+  const removed = sourceColumns.filter((column) => !shownIds.has(column.id)).map((column) => column.id);
+  if (removed.length) layout.removed = removed;
   const hiddenRows = [
     ...(shown.schema?.hiddenRows ?? []).filter((id) => shownRowIds.has(id)),
     ...source.rows.filter((row) => !shownRowIds.has(row.id)).map((row) => row.id),
@@ -710,6 +717,66 @@ export function withTableFormat(
 export function withCellStyles(layout: GeneratedTableLayout, cellStyles: GeneratedTableLayout["cellStyles"]): GeneratedTableLayout {
   const { cellStyles: _previous, ...rest } = layout;
   return cellStyles && Object.keys(cellStyles).length ? { ...rest, cellStyles } : rest;
+}
+
+/** A column of the calculation taken out put back, where the calculation writes it. */
+export function withColumnRestored(layout: GeneratedTableLayout, columnId: string): GeneratedTableLayout {
+  const removed = (layout.removed ?? []).filter((id) => id !== columnId);
+  const { removed: _previous, ...rest } = layout;
+  return removed.length ? { ...rest, removed } : rest;
+}
+
+/* ── Notes of the table ───────────────────────────────────────────── */
+
+/** What names a note of the calculation: where it prints and its text, as the calculation writes it. */
+export const noteKey = (note: Pick<TableNote, "position" | "label" | "text">) => `${note.position}|${note.label ?? ""}|${note.text}`;
+
+/**
+ * The notes of a table the calculation writes as they print: the
+ * appraiser's list (his own notes, the calculation's with his text, in his
+ * order, without the ones he took out) and, after the last one of its place,
+ * each note the calculation writes that the list does not know yet.
+ */
+export function tableNotesOf(source: TableV2, layout: GeneratedTableLayout): GeneratedTableNote[] {
+  const written = (source.schema?.notes ?? []).map((note) => ({ ...note, key: noteKey(note) }));
+  if (!layout.notes) return written;
+  const byKey = new Map(written.map((note) => [note.key, note]));
+  const known = new Set(layout.notes.flatMap((note) => (note.key ? [note.key] : [])));
+  const result: GeneratedTableNote[] = [];
+  for (const note of layout.notes) {
+    if (!note.key) {
+      result.push(note);
+      continue;
+    }
+    const current = byKey.get(note.key);
+    // A note the calculation no longer writes goes with it; one taken out stays out.
+    if (!current || note.removed) continue;
+    result.push(note.edited ? { ...note, key: note.key } : current);
+  }
+  for (const note of written) {
+    if (known.has(note.key)) continue;
+    const after = result.findLastIndex((item) => item.position === note.position);
+    result.splice(after === -1 ? result.length : after + 1, 0, note);
+  }
+  return result;
+}
+
+/**
+ * The layout with the notes as the appraiser left them: `notes` is the list
+ * as shown (each of the calculation's with its key); those of the
+ * calculation missing from it are kept as taken out.
+ */
+export function withTableNotes(layout: GeneratedTableLayout, source: TableV2, notes: GeneratedTableNote[]): GeneratedTableLayout {
+  const written = new Map((source.schema?.notes ?? []).map((note) => [noteKey(note), note]));
+  const kept = new Set(notes.flatMap((note) => (note.key ? [note.key] : [])));
+  const list: GeneratedTableNote[] = notes.map((note) => {
+    if (!note.key) return note;
+    const original = written.get(note.key);
+    const same = original && original.text === note.text && (original.label ?? "") === (note.label ?? "") && original.position === note.position && Boolean(original.small) === Boolean(note.small);
+    return same ? { key: note.key, position: note.position, text: note.text } : { ...note, edited: true };
+  });
+  const removed = [...written.entries()].filter(([key]) => !kept.has(key)).map(([key, note]): GeneratedTableNote => ({ key, position: note.position, text: note.text, removed: true }));
+  return { ...layout, notes: [...list, ...removed] };
 }
 
 /** A column of the appraiser's taken out, with what was written in it. */

@@ -185,7 +185,7 @@ test("V8.2: the card of an existing comparable has the bands of the ficha, and e
   assert.equal(valueOf(html, "cmp-pavimento"), "Concreto");
   assert.equal(valueOf(html, "cmp-pos-manzana"), "Intermedio");
   assert.equal(valueOf(html, "cmp-anuncio-id"), "EB-0001");
-  for (const label of ["Fuente o portal", "Anunciante", "ID de publicación", "Pavimento / acceso", "Posición en manzana", "Edad (años)", "Estacionamientos"]) {
+  for (const label of ["Fuente o portal", "Contacto", "ID de publicación", "Pavimento / acceso", "Ubicación en manzana", "Edad (años)", "Estacionamientos"]) {
     assert.match(html, new RegExp(`<label for="cmp-[a-z0-9-]+">${label.replace(/[()/]/g, "\\$&")}</label>`), `«${label}» labels its field`);
   }
   assert.match(html, /data-sheet-fields=""/);
@@ -231,13 +231,16 @@ test("V8.2: with the card of the base, the sheet shows its warnings, its uses an
   assert.match(html, /aria-label="Avalúos en que se usó"/);
 });
 
-test("V8.2: the comparables table keeps only «Ver ficha» and «Eliminar» per row; «Ver ficha» opens the editable card", () => {
+test("V8.2 and V8.10: each comparable's row of the table of comparables ends with «Ver ficha» and «Eliminar»; «Ver ficha» opens the editable card", () => {
   const panel = readFileSync("src/features/valuations/components/calculation/market-calculation-panel.tsx", "utf8");
-  const actions = panel.slice(panel.indexOf("data-comparable-actions"), panel.indexOf("</SortableComparableRow>"));
+  const actions = panel.slice(panel.indexOf("function ComparableRowActions"), panel.indexOf("function statisticValueText"));
   assert.match(actions, /<IdCard data-icon="inline-start" \/> Ver ficha/);
-  assert.match(actions, /onClick=\{\(\) => setEditing\(comparable\)\}/);
   assert.match(actions, /<Trash2 data-icon="inline-start" \/> Eliminar/);
   assert.doesNotMatch(actions, /Editar comparable|<Pencil|ComparableCardButton/);
+  // At the end of the comparable's row of the table of the dictamen, not in a second table.
+  assert.match(panel, /<CaptureSlot key=\{comparable\.id\} at=\{\{ table: captureAt\.characteristics\.table, row \}\}>\s*<ComparableRowActions/);
+  assert.match(panel, /onOpen=\{\(\) => setEditing\(comparable\)\}/);
+  assert.doesNotMatch(panel, /Ubicación y avisos/);
 });
 
 test("V8.2: the read-only card of the base also shows its map", () => {

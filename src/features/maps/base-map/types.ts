@@ -15,6 +15,8 @@ export interface ComparablePinDto {
   /** Real estate or machinery: a machine's pin never names a real estate market. */
   assetClass?: ComparableClass;
   operationType: OperationType;
+  /** «Tipo de inmueble» (casa, oficina, nave…), when its card says it: the layers of the map tell them apart (video 8.12). */
+  kind?: { key: string; label: string } | null;
   location: string;
   lat: number;
   lon: number;

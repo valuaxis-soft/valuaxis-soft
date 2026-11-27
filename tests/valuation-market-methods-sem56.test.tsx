@@ -100,8 +100,9 @@ test("V5.3-11: the appraiser marks which statistics print and their order; the f
   assert.deepEqual(box(before, "dispersion").map((row) => row.label), [
     "Mínimo de oferta ($/m²):", "Máximo de oferta ($/m²):", "Dispersión inicial:", "Mínimo homologado ($/m²):", "Máximo homologado ($/m²):", "Dispersión final:",
   ]);
-  assert.deepEqual(box(before, "valores").map((row) => row.label), ["Valor Prom. Homologado ($/m²):", "Valor homologado a utilizar ($/m²):"]);
-  assert.ok(box(before, "dispersion").every((row) => row.id === undefined), "no choice: the rows keep their places (labels renamed before stay)");
+  // The median prints again by default (video 8.10, 00:16: «¿dónde me dejaron la mediana?»).
+  assert.deepEqual(box(before, "valores").map((row) => row.label), ["Valor Prom. Homologado ($/m²):", "Valor Mediana Homologado ($/m²):", "Valor homologado a utilizar ($/m²):"]);
+  assert.deepEqual(box(before, "dispersion").map((row) => row.id), ["offerMin", "offerMax", "initialDispersion", "min", "max", "dispersion"], "each row carries its key, so its name follows it");
 
   const chosen = homologation({
     ...land,
@@ -110,7 +111,7 @@ test("V5.3-11: the appraiser marks which statistics print and their order; the f
   assert.deepEqual(box(chosen, "dispersion").map((row) => [row.id, row.label]), [["dispersion", "Dispersión final:"], ["initialDispersion", "Dispersión inicial:"]]);
   assert.deepEqual(box(chosen, "valores").map((row) => row.label), ["Valor Mediana Homologado ($/m²):", "Valor homologado a utilizar ($/m²):"]);
   assert.deepEqual(printedStatisticsOf({ printedStatistics: { order: ["mean"], hidden: [] } }).order.slice(0, 2), ["mean", "offerMin"], "the rest follow in the format's order");
-  assert.deepEqual(shownStatistics({}), ["offerMin", "offerMax", "initialDispersion", "min", "max", "dispersion", "mean"], "the median does not print unless marked");
+  assert.deepEqual(shownStatistics({}), ["offerMin", "offerMax", "initialDispersion", "min", "max", "dispersion", "mean", "median"], "the median prints unless taken out");
   assert.equal(marketSettingsSchema.safeParse({ ...land.settings, printedStatistics: { order: ["mean"], hidden: ["moda"] } }).success, false);
 });
 

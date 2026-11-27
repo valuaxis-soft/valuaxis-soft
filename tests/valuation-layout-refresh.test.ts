@@ -128,6 +128,7 @@ test("the policy: all takes every pending step; new only those shipped before th
   assert.equal(layoutRefreshPolicy(" NEW "), "new");
   assert.equal(layoutStepsFor({ policy: "all", version: 0, createdAt: "2026-10-01T12:00:00Z" }).length, LAYOUT_VERSION);
   assert.equal(layoutStepsFor({ policy: "new", version: 0, createdAt: "2026-10-01T12:00:00Z" }).length, 0);
-  assert.equal(layoutStepsFor({ policy: "new", version: 0, createdAt: "2026-11-25T12:00:00Z" }).length, LAYOUT_VERSION);
+  assert.equal(layoutStepsFor({ policy: "new", version: 0, createdAt: "2026-11-25T12:00:00Z" }).length, 1, "only the step that shipped before it was created");
+  assert.equal(layoutStepsFor({ policy: "new", version: 0, createdAt: "2026-11-27T12:00:00Z" }).length, LAYOUT_VERSION);
   assert.equal(layoutStepsFor({ policy: "all", version: LAYOUT_VERSION }).length, 0);
 });

@@ -80,7 +80,14 @@ export function withAppraiserLayout(block: Block, previous: Block | undefined): 
   if (!previous) return block;
   const written = new Set(block.tables.map((table) => table.id.toLowerCase()));
   const own = previous.tables.filter((table) => isOwnTable(table) && !written.has(table.id.toLowerCase()));
-  const next = own.length ? { ...block, tables: [...block.tables, ...own] } : block;
+  const withOwn = own.length ? { ...block, tables: [...block.tables, ...own] } : block;
+  // The tables of each subbloque (a market's data, its homologation) keep how they were arranged too.
+  const before = new Map(previous.apartados.map((apartado) => [apartado.id.toLowerCase(), apartado]));
+  const apartados = withOwn.apartados.map((apartado) => {
+    const kept = before.get(apartado.id.toLowerCase())?.contentLayout;
+    return isContentLayout(kept) ? { ...apartado, contentLayout: keptContentLayout(apartado, kept) } : apartado;
+  });
+  const next = apartados.some((apartado, index) => apartado !== withOwn.apartados[index]) ? { ...withOwn, apartados } : withOwn;
   if (!isContentLayout(previous.contentLayout)) return next;
   return { ...next, contentLayout: keptContentLayout(next, previous.contentLayout) };
 }

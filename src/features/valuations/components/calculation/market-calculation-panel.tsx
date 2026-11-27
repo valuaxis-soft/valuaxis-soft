@@ -1,30 +1,43 @@
 "use client";
 
-import { AlertTriangle, ArrowDown, ArrowDownWideNarrow, ArrowUp, ArrowUpNarrowWide, Calculator, ChevronRight, EyeOff, FileDown, IdCard, Loader2, MapPin, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowDownWideNarrow, ArrowUp, ArrowUpNarrowWide, Calculator, EyeOff, FileDown, IdCard, Loader2, MapPin, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
 import { Fragment, useDeferredValue, useEffect, useEffectEvent, useMemo, useRef, useState, useSyncExternalStore, type ReactNode, type RefObject } from "react";
 import { toast } from "sonner";
 
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Textarea } from "@/components/ui/textarea";
 import { api, SessionExpiredError, type ComparableFormValues } from "@/lib/api-client";
-import { cn, countLabel } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { CALC_HEAD, CALC_HEAD_CELL, CALC_ROW, CALC_SECTION_HEADING, CALC_TABLE, CALC_TABLE_FRAME } from "./calculation-table-style";
 import { CalcTableContextMenu } from "./calc-table-context-menu";
 import { useAiAssist } from "@/features/ai/ai-assist-context";
 import type { ListingReading } from "@/features/ai/listing-prefill";
-import type { CustomFactor } from "@/features/firm/custom-factors";
 import { DEFAULT_ENGINE_CONFIG } from "@/features/valuations/engine/config";
-import { computeMarketApproach, type MarketApproachResult } from "@/features/valuations/engine/market";
+import { computeMarketApproach, type HomologationStats, type MarketApproachResult } from "@/features/valuations/engine/market";
 import {
   COMPARABLE_TYPE_LABELS,
+  EXTRA_STATISTIC_KINDS,
+  FACTOR_TYPES,
+  FACTOR_TYPE_LABELS,
   MARKET_LABELS,
+  MAX_FACTOR_SLOTS,
   MIN_COMPARABLES,
   SALE_COMPARABLE_TYPES,
   characteristicFieldsOf,
   comparableFormValues,
-  homologatesOf,
+  factorKey,
   homologationBasisOf,
   homologatesAgainstLotOrSubject,
   isComparableComplete,
@@ -38,30 +51,54 @@ import {
   printedStatisticsOf,
   printsAdditionalAmount,
   toMarketEngineInput,
+  type CharacteristicField,
   type ComparableDto,
   type ComparableType,
+  type ExtraStatisticKind,
+  type FactorSlotConfig,
   type HomologationBasis,
   type MarketCalculationDto,
   type MarketSettingsDto,
-  type MarketStatistic,
   type PrintedStatistics,
+  type StatisticKey,
 } from "@/features/valuations/calculation/market-types";
 import { ADOPTED_VALUE_OUTSIDE_MESSAGE } from "@/features/valuations/calculation/adopted-value-check";
 import {
-  DEFAULT_HOMOLOGATION_NOTE,
   MARKET_TEMPLATE_BLOCK_IDS,
   RENT_TEMPLATE_BLOCK_IDS,
   SAME_FACTORS_AS_LAND_SALE,
   characteristicsLine,
   defaultOfferIntro,
   marketCaptureColumns,
+  marketColumnField,
   marketFactorColumnId,
   marketHomologationTableId,
   marketDocumentBlocks,
+  marketTableId,
   suggestedSubjectAreaFor,
 } from "@/features/valuations/calculation/market-document";
+import {
+  EXTRA_STATISTIC_LABELS,
+  extraStatisticText,
+  statisticLabel,
+  withExtraStatistic,
+  withExtraStatisticFormula,
+  withStatisticLabel,
+  withoutExtraStatistic,
+} from "@/features/valuations/calculation/market-statistics";
+import {
+  SPEC_LABEL_KEYS,
+  cardFieldLabels,
+  linkableCardFields,
+  linkedColumnId,
+  specLabel,
+  withCardFieldLabel,
+  withLinkedColumn,
+  type MarketLinkTable,
+} from "@/features/valuations/calculation/market-table-columns";
+import { marketReportApproach } from "@/features/valuations/services/report-approaches";
 import type { CapturePages } from "@/features/valuations/calculation/capture-display";
-import { CaptureSlot, useCaptureHeaderRename, usePublishCapturePages } from "../editor/capture-host";
+import { CaptureSlot, SECTION_TOP_SLOT, useCaptureColumns, usePublishCapturePages } from "../editor/capture-host";
 import { CommitCell } from "./commit-cell";
 import {
   COMPUTED_FACTORS,
@@ -88,10 +125,8 @@ import { ImportComparablesDialog } from "./import-comparables-dialog";
 import { ComparableCharacteristicCell, MarketCharacteristicsTable, characteristicNumberText, newFieldKey, type FieldsUpdate, type SubjectUpdate } from "./market-characteristics-table";
 import { MARKET_ACCENT } from "./market-accent";
 import { MarketEditSession, rebaseDraft } from "./market-edit-session";
-import { SortableRows, useSortableRow } from "./sortable-rows";
 import { mirroredAttributes, sharedCharacteristics, unsharedAttributes } from "@/features/valuations/calculation/market-characteristic-sharing";
 import type { SubjectFacts } from "@/features/valuations/calculation/market-subject-facts";
-import { MarketFactorSlots } from "./market-factor-slots";
 import { MarketHomologationCapture } from "./market-homologation-table";
 
 /** A datum of a comparable in its cell of the table of the dictamen: framed as a field, the appraiser's among the gray figures. */
@@ -189,6 +224,12 @@ export function MarketCalculationPanel(props: {
   subjectFacts?: SubjectFacts;
   /** The offers show the advertiser's name and phone as the dictamen prints them (the carátula's choice; off by default). */
   advertiserData?: boolean;
+  /**
+   * «Agregar al informe valuatorio» of each market, the section's switch:
+   * «Quitar este mercado» turns it off and adding the market turns it on
+   * (video 8.7, 06:40: «si se quita, debe estar vinculado con esto»).
+   */
+  report?: { included: (type: ComparableType) => boolean; onIncludedChange: (type: ComparableType, included: boolean) => void };
 }) {
   const { valuationId } = props;
   const types = props.types ?? SALE_COMPARABLE_TYPES;
@@ -241,17 +282,62 @@ export function MarketCalculationPanel(props: {
     const empty = await api.market.get(valuationId, item);
     props.onCalculation(empty, null);
   };
+  // The section's switch of each market, the same as «Quitar este mercado» and «Agregar mercado» (video 8.7, 06:40).
+  const includeInReport = (item: ComparableType, included: boolean) => {
+    if (props.report && props.report.included(item) !== included) props.report.onIncludedChange(item, included);
+  };
+  // «Quitar este mercado» can be taken back with Ctrl+Z right after, as with «Deshacer» of its notice (V8.7: it went to Ingresos).
+  const pendingRestore = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const restore = pendingRestore.current;
+      if (!restore || event.defaultPrevented || !(event.ctrlKey || event.metaKey) || event.shiftKey || event.key.toLowerCase() !== "z") return;
+      // Typing in a field keeps its own undo.
+      if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select, [contenteditable=true]")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      pendingRestore.current = null;
+      restore();
+    };
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, []);
   const restoreMarket = async (item: ComparableType, snapshot: MarketCalculationDto, comparableIds: string[]) => {
+    pendingRestore.current = null;
     try {
       if (comparableIds.length) await api.market.restoreMarket(valuationId, item, comparableIds);
       if (snapshot.configured) await api.market.saveSettings(valuationId, snapshot.settings);
       setShown((current) => new Set([...current, item]));
       setType(item);
+      includeInReport(item, true);
       toast.success(`Mercado de ${COMPARABLE_TYPE_LABELS[item].toLowerCase()} restaurado.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "No se pudo deshacer.");
     }
   };
+  /** Shows a market not captured yet, and puts it in the report. */
+  const addMarket = (item: ComparableType) => {
+    setShown((current) => new Set([...current, item]));
+    setType(item);
+    includeInReport(item, true);
+  };
+  // The section's «Agregar al informe valuatorio» turned on for a market not shown here: it asks first (video 8.7, 07:20).
+  const [asking, setAsking] = useState<ComparableType | null>(null);
+  const answered = useRef(false);
+  const includedKey = types.map((item) => (props.report?.included(item) ? "1" : "0")).join("");
+  const seenIncluded = useRef<string | null>(null);
+  useEffect(() => {
+    const before = seenIncluded.current;
+    seenIncluded.current = includedKey;
+    if (before === null || props.readOnly) return;
+    const turnedOn = types.find((item, index) => before[index] === "0" && includedKey[index] === "1" && !shown.has(item));
+    if (turnedOn) {
+      answered.current = false;
+      setAsking(turnedOn);
+    }
+    // Only a change of the switches asks; the markets shown follow them.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [includedKey]);
   const removeMarket = (item: ComparableType, snapshot: MarketCalculationDto) => {
     const name = COMPARABLE_TYPE_LABELS[item].toLowerCase();
     const count = snapshot.comparables.length;
@@ -267,9 +353,16 @@ export function MarketCalculationPanel(props: {
             setShown((current) => new Set([...current].filter((kept) => kept !== item)));
             if (type === item) setType(types.find((other) => other !== item && shown.has(other)) ?? types[0]);
             await reportEmpty(item);
+            // Out of the report too, unless another market shown goes with the same switch (the rents of land and of buildings).
+            const sameSwitch = types.filter((other) => other !== item && shown.has(other) && marketReportApproach(other) === marketReportApproach(item));
+            if (!sameSwitch.length) includeInReport(item, false);
+            const restore = () => void restoreMarket(item, snapshot, comparableIds);
+            pendingRestore.current = restore;
             toast.success(`Mercado de ${name} quitado.`, {
+              description: "Deshacer (o Ctrl+Z) lo regresa con sus comparables.",
               duration: 15000,
-              action: { label: "Deshacer", onClick: () => void restoreMarket(item, snapshot, comparableIds) },
+              action: { label: "Deshacer", onClick: restore },
+              onAutoClose: () => { if (pendingRestore.current === restore) pendingRestore.current = null; },
             });
           } catch (error) {
             toast.error(error instanceof Error ? error.message : "No se pudo quitar el mercado.");
@@ -312,10 +405,7 @@ export function MarketCalculationPanel(props: {
               type="button"
               size="sm"
               variant="outline"
-              onClick={() => {
-                setShown((current) => new Set([...current, item]));
-                setType(item);
-              }}
+              onClick={() => addMarket(item)}
             >
               <Plus data-icon="inline-start" /> {addMarketLabel(item)}
             </Button>
@@ -325,18 +415,35 @@ export function MarketCalculationPanel(props: {
           </span>
         </div>
       ) : null}
-      {/* Where the appraiser is, always in sight while scrolling the panel and its pages (V7.2-02). */}
+      {/* Where the appraiser is, in sight over the whole section while it scrolls, its tables too (V7.2-02, video 8.7). */}
       {/* Filled with the market's pastel (V8.3), so it does not get lost among the pages of the template. */}
-      <p
-        className={cn("sticky top-0 z-20 flex flex-wrap items-center gap-2 rounded-md border border-l-4 px-3 py-2 text-sm shadow-sm", MARKET_ACCENT[type].border, MARKET_ACCENT[type].here)}
-        data-market-here={type}
-      >
-        <MapPin className="size-4 shrink-0" aria-hidden />
-        <span>Estás en: <strong className="font-semibold">{COMPARABLE_TYPE_LABELS[type]}</strong></span>
-        {types.length > 1 ? (
-          <span className="text-xs text-foreground/75">Abajo ves solo las páginas de este mercado; el dictamen imprime todos los mercados agregados al informe.</span>
-        ) : null}
-      </p>
+      <CaptureSlot at={{ table: SECTION_TOP_SLOT, part: "before" }} fallback>
+        <p
+          className={cn("flex flex-wrap items-center gap-2 rounded-md border border-l-4 px-3 py-2 text-sm shadow-sm", MARKET_ACCENT[type].border, MARKET_ACCENT[type].here)}
+          data-market-here={type}
+        >
+          <MapPin className="size-4 shrink-0" aria-hidden />
+          <span>Estás en: <strong className="font-semibold">{COMPARABLE_TYPE_LABELS[type]}</strong></span>
+          {props.report && !props.report.included(type) ? (
+            <span className="rounded-sm bg-background/70 px-1.5 text-xs font-medium" data-market-out-of-report="">No se imprime: está fuera del informe</span>
+          ) : null}
+          {types.length > 1 ? (
+            <span className="text-xs text-foreground/75">Abajo ves solo las páginas de este mercado; el dictamen imprime todos los mercados agregados al informe.</span>
+          ) : null}
+        </p>
+      </CaptureSlot>
+      <AlertDialog open={asking !== null} onOpenChange={(open) => { if (open) return; if (asking && !answered.current) includeInReport(asking, false); answered.current = false; setAsking(null); }}>
+        <AlertDialogContent size="sm" data-add-market-question="">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{asking ? `¿Deseas agregar un enfoque de mercado de ${COMPARABLE_TYPE_LABELS[asking].toLowerCase()}?` : ""}</AlertDialogTitle>
+            <AlertDialogDescription>Se agrega su pestaña con sus especificaciones, sus comparables y su homologación, y sus páginas entran al dictamen.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No</AlertDialogCancel>
+            <AlertDialogAction type="button" onClick={() => { answered.current = true; if (asking) addMarket(asking); setAsking(null); }}>Sí, agregarlo</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       {hiddenHere.length ? (
         <div role="alert" className="flex flex-wrap items-center gap-2 rounded-md border border-amber-500/40 bg-amber-50 p-2 text-xs text-amber-900 dark:bg-amber-950/30 dark:text-amber-200" data-market-hidden-blocks="">
           <EyeOff className="size-3.5 shrink-0" aria-hidden />
@@ -354,37 +461,6 @@ export function MarketCalculationPanel(props: {
         <MarketTypePanel key={type} {...props} type={type} onRemoveMarket={visible.length > 1 && !props.readOnly ? removeMarket : undefined} />
       </LiveFormulaOwnerProvider>
     </div>
-  );
-}
-
-/**
- * A numbered part of the specifications, in the order of the appraiser's
- * format. A collapsible one folds with its arrow, like "Indirectos" in costs
- * (video 6.2, 04:13); it opens on its own while it holds something.
- */
-function Part(props: { number: number; title: string; aside?: ReactNode; children: ReactNode; collapsible?: { open: boolean } }) {
-  if (props.collapsible) {
-    return (
-      <details className="group grid gap-2" open={props.collapsible.open} aria-label={props.title} data-collapsible-part={props.number}>
-        <summary className={cn(CALC_SECTION_HEADING, "cursor-pointer list-none [&::-webkit-details-marker]:hidden")}>
-          <span className="inline-flex items-center gap-1">
-            <ChevronRight className="size-4 transition-transform group-open:rotate-90 motion-reduce:transition-none" aria-hidden />
-            {props.number}. {props.title}
-          </span>
-          {props.aside}
-        </summary>
-        <div className="mt-2 grid gap-2">{props.children}</div>
-      </details>
-    );
-  }
-  return (
-    <section className="grid gap-2" aria-label={props.title}>
-      <h4 className={CALC_SECTION_HEADING}>
-        <span>{props.number}. {props.title}</span>
-        {props.aside}
-      </h4>
-      {props.children}
-    </section>
   );
 }
 
@@ -426,7 +502,6 @@ function MarketTypePanel(props: {
   const [prefill, setPrefill] = useState<{ reading: ListingReading; listingText: string; images: PendingImages } | null>(null);
   const ai = useAiAssist();
   const [catalog, setCatalog] = useState<FactorCatalog>(EMPTY_FACTOR_CATALOG);
-  const [customFactors, setCustomFactors] = useState<CustomFactor[]>([]);
   const [reviewThresholds, setReviewThresholds] = useState<{ builtAreaTolerance?: number; offerMaxAgeMonths?: number; statuses?: ReviewStatusItem[] }>({});
   // Every change of the panel goes through the session: shown at once, saved in order (V7.2-11, -13, -15).
   const session = useRef<MarketEditSession | null>(null);
@@ -445,9 +520,6 @@ function MarketTypePanel(props: {
     let active = true;
     api.firm.factors()
       .then((next) => { if (active) setCatalog(next.catalog); })
-      .catch(() => undefined);
-    api.firm.customFactors()
-      .then((next) => { if (active) setCustomFactors(next.factors); })
       .catch(() => undefined);
     // The warnings of the list use the firm's thresholds, as the review does (Despacho → Revisión de comparables).
     api.firm.reviewChecklist()
@@ -678,6 +750,47 @@ function MarketTypePanel(props: {
     });
   };
   const confirmDeleteComparable = useConfirmDelete();
+
+  /**
+   * An added characteristic deleted from the table and from the cards (video
+   * 8.10, 13:40: «no es quitar, es eliminar la característica y también de la
+   * ficha»): it asks, takes it out of the list and what each comparable had in
+   * it; one step of the panel's «Deshacer».
+   */
+  const removeCharacteristicEverywhere = (field: CharacteristicField) => {
+    const current = session.current;
+    if (!current || readOnly) return;
+    const name = field.label.trim().toLocaleLowerCase("es-MX");
+    const holds = (comparable: ComparableDto) =>
+      comparable.extra?.[field.key] !== undefined || (comparable.attributes ?? []).some((attribute) => attribute.name.trim().toLocaleLowerCase("es-MX") === name);
+    const holding = current.view.comparables.filter(holds);
+    confirmDeleteComparable({
+      title: `¿Eliminar «${field.label}» de la tabla y de las fichas?`,
+      description: holding.length
+        ? `Se borra también lo capturado en ${holding.length === 1 ? "1 comparable" : `${holding.length} comparables`}. Puedes regresarlo con «Deshacer» del cálculo o Ctrl+Z.`
+        : "Ningún comparable tiene capturado este dato. Puedes regresarlo con «Deshacer» del cálculo o Ctrl+Z.",
+      confirmLabel: "Eliminar característica",
+      onConfirm: () => {
+        const now = session.current;
+        if (!now) return;
+        history.record(snapshotOf(now.view), null);
+        const base = settingsFrom(now.view.settings, effectiveDraft ?? draftFrom(now.view.settings));
+        const fields = characteristicFieldsOf(base).filter((item) => item.key !== field.key);
+        saveSettings({
+          ...base,
+          characteristicFields: fields,
+          subjectCharacteristics: Object.fromEntries(Object.entries(base.subjectCharacteristics ?? {}).filter(([key]) => key !== field.key)),
+        }, { record: false });
+        for (const comparable of now.view.comparables.filter(holds)) {
+          changeComparable(comparable, (item) => {
+            const { [field.key]: _removed, ...extra } = item.extra ?? {};
+            return { ...item, extra, attributes: (item.attributes ?? []).filter((attribute) => attribute.name.trim().toLocaleLowerCase("es-MX") !== name) };
+          }, { record: false });
+        }
+        toast.success(`«${field.label}» eliminada de la tabla y de las fichas.`);
+      },
+    });
+  };
   const panelRef = useRef<HTMLElement>(null);
 
   /**
@@ -728,7 +841,6 @@ function MarketTypePanel(props: {
   const createFactor = async (label: string) => {
     try {
       const next = await api.firm.addCustomFactor(label);
-      setCustomFactors(next.factors);
       return next.factor;
     } catch (error) {
       failed(error);
@@ -736,16 +848,128 @@ function MarketTypePanel(props: {
     }
   };
 
-  // A factor renamed in the header of the homologation table of the dictamen is the factor's name (video 5.3, 10:12): the annex and the memory print it too.
-  const factorAt = (columnId: string) => (liveSettings?.factorSlots ?? []).findIndex((_, index) => marketFactorColumnId(index) === columnId.toLowerCase());
-  useCaptureHeaderRename(
-    marketHomologationTableId(type),
-    (columnId) => factorAt(columnId) >= 0,
-    (columnId, label) => {
+  /*
+   * The columns of the market's tables are the calculation's (videos 8.9 and 8.10): a factor of the homologation is
+   * a column of its table (renamed, added among the factors or taken out there; the FRe multiplies them), and a
+   * datum of the card is a column whose name is the card's in both directions. The panel tells each table so.
+   */
+  const slotsNow = () => session.current?.view.settings.factorSlots ?? liveSettings?.factorSlots ?? [];
+  const factorAt = (columnId: string | null) => (columnId === null ? -1 : slotsNow().findIndex((_, index) => marketFactorColumnId(index) === columnId.toLowerCase()));
+  const fieldAt = (table: string, columnId: string) => {
+    const settings = session.current?.view.settings ?? liveSettings;
+    return settings ? marketColumnField(settings, table, columnId) : null;
+  };
+  /** A datum of the card renamed from its column: the list of characteristics keeps the names of its own, the rest the market's names. */
+  const renameField = (key: string, label: string) => patchSettings((current) => {
+    const list = characteristicFieldsOf(current);
+    if (list.some((field) => field.key === key)) return { characteristicFields: list.map((field) => (field.key === key ? { ...field, label: label.trim() } : field)) };
+    return { fieldLabels: withCardFieldLabel(current.fieldLabels, key, label) };
+  });
+  const toggleLinked = (table: MarketLinkTable, key: string, on?: boolean) => patchSettings((current) => {
+    const linked = current.linkedColumns?.[table] ?? [];
+    return { linkedColumns: withLinkedColumn(current.linkedColumns, table, key, on ?? !linked.includes(key)) };
+  });
+  const linkableFields = (table: MarketLinkTable) => {
+    const settings = session.current?.view.settings ?? liveSettings;
+    if (!settings) return [];
+    const linked = new Set(settings.linkedColumns?.[table] ?? []);
+    return linkableCardFields(settings).map((field) => ({ key: field.key, label: field.label, linked: linked.has(field.key) }));
+  };
+  // A column added among the factors is a new factor (once, though the table tells it twice).
+  const insertedFactors = useRef(new Set<string>());
+  const addFactor = async (after: string | null, name: string, columnId: string) => {
+    if (insertedFactors.current.has(columnId)) return;
+    insertedFactors.current.add(columnId);
+    const slots = slotsNow();
+    if (slots.length >= MAX_FACTOR_SLOTS) {
+      toast.info(`La homologación lleva hasta ${MAX_FACTOR_SLOTS} factores (sin contar el FRe).`);
+      return;
+    }
+    const position = after && factorAt(after) >= 0 ? factorAt(after) + 1 : 0;
+    const typed = /^(nueva )?columna( \d+)?$/i.test(name.trim()) ? "" : name.trim();
+    const plain = (text: string) => text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const used = new Set(slots.filter((slot) => !slot.key).map((slot) => slot.type));
+    const ofCatalog = FACTOR_TYPES.find((factorType) => typed && plain(FACTOR_TYPE_LABELS[factorType]) === plain(typed) && !used.has(factorType));
+    let slot: FactorSlotConfig;
+    if (ofCatalog) slot = { type: ofCatalog, label: FACTOR_TYPE_LABELS[ofCatalog] };
+    else if (!used.has("OTRO")) slot = { type: "OTRO", label: typed || FACTOR_TYPE_LABELS.OTRO };
+    else {
+      const created = await createFactor(typed || `Factor ${slots.length + 1}`);
+      if (!created) return;
+      slot = { type: "OTRO", key: created.key, label: created.label };
+    }
+    patchSettings((current) => ({ factorSlots: [...current.factorSlots.slice(0, position), slot, ...current.factorSlots.slice(position)] }));
+    toast.success(`Factor «${slot.label}» agregado a la homologación.`, { description: "Escribe el factor de cada comparable en su columna; el FRe los multiplica." });
+  };
+  const removeFactor = (index: number) => {
+    const slot = slotsNow()[index];
+    if (!slot || slot.type === "SUPERFICIE") return;
+    patchSettings((current) => ({ factorSlots: current.factorSlots.filter((item) => factorKey(item) !== factorKey(slot)) }));
+    toast.success(`Factor «${slot.label}» quitado de la homologación.`, { description: "Lo capturado se conserva: Ctrl+Z o «Deshacer» del cálculo lo regresa." });
+  };
+  const homologationTable = marketHomologationTableId(type);
+  useCaptureColumns(homologationTable, {
+    handles: (columnId) => factorAt(columnId) >= 0 || fieldAt(homologationTable, columnId) !== null,
+    rename: (columnId, label) => {
       const index = factorAt(columnId);
-      if (index >= 0 && liveSettings) patchSettings({ factorSlots: liveSettings.factorSlots.map((item, position) => (position === index ? { ...item, label } : item)) });
+      if (index >= 0) patchSettings((current) => ({ factorSlots: current.factorSlots.map((item, position) => (position === index ? { ...item, label } : item)) }));
+      const field = fieldAt(homologationTable, columnId);
+      if (field) renameField(field, label);
     },
-  );
+    // The surface factor, the FRe and the homologated value are the homologation; the rest may go.
+    removable: (columnId) => {
+      const index = factorAt(columnId);
+      if (index >= 0) return slotsNow()[index].type !== "SUPERFICIE";
+      return ["col-2", "col-3", "col-4"].includes(columnId.toLowerCase()) || fieldAt(homologationTable, columnId) !== null;
+    },
+    takesRemoval: (columnId) => factorAt(columnId) >= 0 || fieldAt(homologationTable, columnId) !== null,
+    remove: (columnId) => {
+      const index = factorAt(columnId);
+      if (index >= 0) removeFactor(index);
+      const field = fieldAt(homologationTable, columnId);
+      if (field) toggleLinked("homologacion", field, false);
+    },
+    takesInsert: (after) => after !== null && (after.toLowerCase() === "col-4" || factorAt(after) >= 0),
+    insert: (after, name, columnId) => void addFactor(after, name, columnId),
+    // The statistics are edited in their own table under the homologation, not among the box labels.
+    boxRowManaged: (rowKey) => rowKey.startsWith("dispersion.") || (rowKey.startsWith("valores.") && rowKey !== "valores.adoptado"),
+    linkable: () => linkableFields("homologacion"),
+    link: (key) => toggleLinked("homologacion", key),
+  });
+  const comparablesTable = marketTableId(type, "caracteristicas");
+  useCaptureColumns(comparablesTable, {
+    handles: (columnId) => fieldAt(comparablesTable, columnId) !== null,
+    rename: (columnId, label) => {
+      const field = fieldAt(comparablesTable, columnId);
+      if (field) renameField(field, label);
+    },
+    // The reference and the location name the comparable; the rest may go.
+    removable: (columnId) => !["col-1", "col-2"].includes(columnId.toLowerCase()),
+    takesRemoval: (columnId) => fieldAt(comparablesTable, columnId) !== null,
+    remove: (columnId) => {
+      const field = fieldAt(comparablesTable, columnId);
+      if (field) toggleLinked("caracteristicas", field, false);
+    },
+    linkable: () => linkableFields("caracteristicas"),
+    link: (key) => toggleLinked("caracteristicas", key),
+  });
+  const offersTable = marketTableId(type, "ofertas");
+  useCaptureColumns(offersTable, {
+    handles: (columnId) => fieldAt(offersTable, columnId) !== null,
+    rename: (columnId, label) => {
+      const field = fieldAt(offersTable, columnId);
+      if (field) renameField(field, label);
+    },
+    // The reference, the area and the offer are captured here; the rest may go.
+    removable: (columnId) => !["col-1", "col-5", "col-6"].includes(columnId.toLowerCase()),
+    takesRemoval: (columnId) => (liveSettings?.linkedColumns?.ofertas ?? []).some((key) => linkedColumnId(key) === columnId.toLowerCase()),
+    remove: (columnId) => {
+      const field = fieldAt(offersTable, columnId);
+      if (field) toggleLinked("ofertas", field, false);
+    },
+    linkable: () => linkableFields("ofertas"),
+    link: (key) => toggleLinked("ofertas", key),
+  });
 
   if (loadError) {
     return <p className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">{loadError}</p>;
@@ -809,12 +1033,23 @@ function MarketTypePanel(props: {
     for (const target of changed) changeComparable(target, () => target, { record: false });
   };
 
+  // Where each part of the capture sits: right above the table it sets, in the order of the appraiser's Excel (video 8.10).
+  const tableOf = (name: "oferta" | MarketLinkTable) => marketTableId(type, name);
+  const statisticsChoice = printedStatisticsOf(liveSettings);
+  const homologatedValues = result?.homologation.comparables.map((row) => row.homologatedUnitValue) ?? [];
+  const specLabelOf = (key: keyof typeof SPEC_LABEL_KEYS, fallback: string) => specLabel(liveSettings, key, fallback);
+  const renameSpec = (key: keyof typeof SPEC_LABEL_KEYS, label: string) =>
+    patchSettings((current) => {
+      const { [SPEC_LABEL_KEYS[key]]: _previous, ...rest } = current.fieldLabels ?? {};
+      return { fieldLabels: label.trim() ? { ...rest, [SPEC_LABEL_KEYS[key]]: label.trim() } : rest };
+    });
+
   return (
     <section
       ref={panelRef}
       // Focusable from code only: after a deletion the focus waits here, so Ctrl+Z is the panel's.
       tabIndex={-1}
-      className={cn("grid gap-5 rounded-lg border-2 border-dashed bg-muted/20 p-3 outline-none sm:p-4", MARKET_ACCENT[type].border)}
+      className={cn("grid gap-3 rounded-lg border-2 border-dashed bg-muted/20 p-3 outline-none", MARKET_ACCENT[type].border)}
       aria-labelledby="market-calculation-title"
       data-comparable-type={type}
       onKeyDown={(event) => {
@@ -825,6 +1060,7 @@ function MarketTypePanel(props: {
       <header className="grid gap-0.5">
         <h3 id="market-calculation-title" className="flex flex-wrap items-center gap-2 text-base font-semibold">
           <Calculator className="size-4" /> {labels.title} · {COMPARABLE_TYPE_LABELS[type]}
+          {savingSettings ? <Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}
           {!readOnly ? (
             <span className="ml-auto inline-flex items-center gap-1" role="group" aria-label="Deshacer y rehacer del cálculo">
               <Button type="button" size="sm" variant="ghost" disabled={!history.canUndo} title="Deshacer el último cambio del cálculo (Ctrl+Z)" onClick={() => { const current = snapshot(); if (current) history.undo(current); }}>
@@ -842,8 +1078,8 @@ function MarketTypePanel(props: {
           ) : null}
         </h3>
         <p className="text-xs text-muted-foreground" data-market-strip-note="">
-          Configuración y comparables de este mercado; no se imprime. Los factores de la homologación, el valor adoptado y la ubicación, la superficie y la oferta de cada comparable
-          se capturan abajo, en las tablas de su bloque: las celdas en blanco son tuyas y las grises las calcula el sistema.
+          Todo se captura abajo, en el bloque de este mercado y en el orden de tu formato: especificaciones, nivel de oferta, comparables, características,
+          datos de la oferta, homologación y valores. Las celdas en blanco son tuyas y las grises las calcula el sistema.
           {type === "TERRENO_VENTA" ? " El enfoque de costos toma el valor de este mercado de terrenos para el terreno." : null}
         </p>
       </header>
@@ -852,185 +1088,90 @@ function MarketTypePanel(props: {
         <p className="text-sm text-muted-foreground">El avalúo está concluido: el cálculo es de solo lectura.</p>
       ) : null}
 
-      <Part number={1} title="Especificaciones" aside={savingSettings ? <Loader2 className="size-3.5 animate-spin text-muted-foreground" aria-label="Guardando" /> : null}>
-        <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => saveSettings()}>
-          <Field>
-            <FieldLabel htmlFor="market-subject-area">{labels.subjectArea}</FieldLabel>
-            <FormulaInput
-              id="market-subject-area"
-              grouping
-              value={effectiveDraft?.subjectArea ?? ""}
-              onChange={setDraftField("subjectArea")}
-            />
-            {prefilled ? (
-              <p className="text-xs text-muted-foreground" data-subject-area-prefilled="">
-                Tomada de la superficie {isLandComparableType(type) ? "de terreno" : "construida"} del avalúo; puedes cambiarla.
-              </p>
+      {/* 1. Especificaciones and the offer level, over the offer level of the page (they do not print; the boxes over the homologation print what applies). */}
+      <CaptureSlot at={{ table: tableOf("oferta"), part: "before" }} fallback>
+        <div className="grid gap-3" data-market-specs="">
+          <h4 className={CALC_SECTION_HEADING}>Especificaciones</h4>
+          <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" onBlur={() => saveSettings()}>
+            {homologatesAgainstLotOrSubject(type) ? (
+              <Field className="sm:col-span-2 lg:col-span-4" data-homologation-basis="">
+                <FieldLabel id="market-basis-label">Homologación de acuerdo a</FieldLabel>
+                <div role="radiogroup" aria-labelledby="market-basis-label" className="flex flex-wrap items-center gap-4 text-sm">
+                  {([["LOTE_TIPO", PAGE_BASE_LABEL], ["SUJETO", "Sujeto"]] as Array<[HomologationBasis, string]>).map(([value, label]) => (
+                    <label key={value} className="flex items-center gap-1.5">
+                      <input type="radio" name={`market-basis-${type}`} checked={basis === value} onChange={() => patchSettings({ homologationBasis: value })} />
+                      {label}
+                    </label>
+                  ))}
+                  <span className="text-xs text-muted-foreground">Sujeto: homologación directa; lote tipo: indirecta. Aplica a todos los factores.</span>
+                </div>
+              </Field>
             ) : null}
-          </Field>
-          {homologatesAgainstLotOrSubject(type) ? (
-          <Field className="sm:col-span-3" data-homologation-basis="">
-            <FieldLabel id="market-basis-label">Homologación de acuerdo a</FieldLabel>
-            <div role="radiogroup" aria-labelledby="market-basis-label" className="flex flex-wrap items-center gap-4 text-sm">
-              {([["LOTE_TIPO", "Lote tipo"], ["SUJETO", "Sujeto"]] as Array<[HomologationBasis, string]>).map(([value, label]) => (
-                <label key={value} className="flex items-center gap-1.5">
-                  <input
-                    type="radio"
-                    name={`market-basis-${type}`}
-                    checked={basis === value}
-                    onChange={() => patchSettings({ homologationBasis: value })}
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Sujeto: homologación directa; lote tipo: homologación indirecta. Aplica a todos los factores, no solo al de superficie.
-            </p>
-          </Field>
-          ) : null}
-          {againstBase ? (
-            <Field>
-              <FieldLabel htmlFor="market-base-area">Lote tipo (m²)</FieldLabel>
-              <FormulaInput id="market-base-area" grouping value={draft.baseArea} onChange={setDraftField("baseArea")} />
-              {!draft.baseArea ? <p className="text-xs text-highlight-strong">Sin lote tipo, el factor de superficie usa el sujeto.</p> : null}
-            </Field>
-          ) : null}
-          <Field>
-            <FieldLabel htmlFor="market-typical-frontage">{againstBase ? "Frente tipo (m)" : "Frente del sujeto (m, opcional)"}</FieldLabel>
-            <FormulaInput id="market-typical-frontage" value={draft.typicalFrontage} onChange={setDraftField("typicalFrontage")} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="market-typical-depth">{againstBase ? "Fondo tipo (m)" : "Fondo del sujeto (m, opcional)"}</FieldLabel>
-            <FormulaInput id="market-typical-depth" value={draft.typicalDepth} onChange={setDraftField("typicalDepth")} />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="market-power">Potencia n</FieldLabel>
-            <SurfacePowerSelect
-              id="market-power"
-              value={liveSettings.surfacePower}
-              onChange={(surfacePower) => patchSettings({ surfacePower })}
-            />
-          </Field>
-          <p className="text-xs text-muted-foreground sm:col-span-4">
-            <span className="font-medium text-foreground" data-surface-formula="">{marketSurfaceFormula(liveSettings)}</span>.{" "}
-            En cada comparable puedes escribir otro valor o usar otra fórmula para el factor de superficie. Los campos numéricos aceptan
-            cálculos: =5*10000, =(1345*235)^(1/6).
-          </p>
-        </fieldset>
-        <MarketOfferLevel
-          labels={offerLabelsOf(liveSettings)}
-          mark={offerMarkOf(liveSettings)}
-          intro={liveSettings.offerIntro ?? null}
-          defaultIntro={defaultOfferIntro(type)}
-          readOnly={readOnly}
-          onChange={(offer) => patchSettings({ ...offer, offerLevel: null })}
-        />
-      </Part>
-
-      <Part
-        number={2}
-        title="Comparables"
-        aside={!readOnly && comparables.length > 1 ? (
-          <span className="flex flex-wrap items-center gap-1 text-xs font-normal">
-            <Button type="button" size="sm" variant="ghost" title={`Ordenar los comparables por su valor unitario, de menor a mayor`} onClick={() => sortByUnitValue(1)}>
-              <ArrowUpNarrowWide data-icon="inline-start" /> Ordenar por ${perUnit} ↑
-            </Button>
-            <Button type="button" size="sm" variant="ghost" title={`Ordenar los comparables por su valor unitario, de mayor a menor`} onClick={() => sortByUnitValue(-1)}>
-              <ArrowDownWideNarrow data-icon="inline-start" /> Ordenar por ${perUnit} ↓
-            </Button>
-          </span>
-        ) : null}
-      >
-        <SortableRows ids={comparables.map((comparable) => comparable.id)} onMove={(ids) => void reorderComparables(ids, "Orden de los comparables guardado.")}>
-        <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly>
-          <table className={cn(CALC_TABLE, "w-full min-w-[560px]")}>
-            <thead className={CALC_HEAD}>
-              <tr>
-                <th className={CALC_HEAD_CELL}><span className="sr-only">Mover</span></th>
-                <th className={CALC_HEAD_CELL}>Ref.</th>
-                <th className={CALC_HEAD_CELL}>ID</th>
-                <th className={CALC_HEAD_CELL}>Ubicación y avisos</th>
-                <th className={CALC_HEAD_CELL}><span className="sr-only">Acciones</span></th>
-              </tr>
-            </thead>
-            <tbody>
-              {comparables.map((comparable) => {
-                // Warnings only: the appraiser's judgement decides whether the comparable stays.
-                const warnings = comparableWarnings(
-                  { ...comparable, hasScreenshot: Boolean(comparable.screenshot) },
-                  {
-                    type, subjectArea: liveSettings.subjectArea, today,
-                    builtAreaTolerance: reviewThresholds.builtAreaTolerance,
-                    offerMaxAgeMonths: comparable.validityMonths ?? reviewThresholds.offerMaxAgeMonths,
-                  },
-                );
-                const status = comparable.review?.status ?? "POR_REVISAR";
-                return (
-                  <SortableComparableRow key={comparable.id} comparable={comparable} readOnly={readOnly}>
-                    <td className="px-2 py-1.5">{comparable.reference}</td>
-                    <td className="px-2 py-1.5 font-mono text-xs whitespace-nowrap">
-                      {formatComparableId(comparable.folio) ?? "—"}
-                      <span className={cn("ml-1 font-sans", isVerifiedStatus(status) ? "text-success-strong" : status === "POR_REVISAR" ? "text-muted-foreground" : "text-highlight-strong")}>
-                        · {reviewStatusOf(status, reviewThresholds.statuses, comparable.review).label}
-                      </span>
-                    </td>
-                    <td className="max-w-64 px-2 py-1.5" title={comparable.location}>
-                      <span className="block truncate">
-                        {comparable.location}
-                        {comparable.photos.length ? <span className="ml-1 text-xs text-muted-foreground">({countLabel(comparable.photos.length, "foto")})</span> : null}
-                      </span>
-                      {warnings.length ? (
-                        <span className="flex items-start gap-1 text-xs text-highlight-strong" data-comparable-warnings title={warnings.map((warning) => warning.message).join("\n")}>
-                          <AlertTriangle className="mt-0.5 size-3 shrink-0" />
-                          <span className="truncate">{warnings.map((warning) => warning.message).join(" ")}</span>
-                        </span>
-                      ) : null}
-                    </td>
-                    {/* One window (V8.2): «Ver ficha» opens the card, editable in place; no separate «Editar». */}
-                    <td className="px-2 py-1.5 text-right whitespace-nowrap" data-comparable-actions="">
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
-                        aria-label={`Ver ficha del comparable ${comparable.reference}`}
-                        title={readOnly ? "Ver la ficha del comparable" : "Ver y editar la ficha del comparable"}
-                        onClick={() => setEditing(comparable)}
-                      >
-                        <IdCard data-icon="inline-start" /> Ver ficha
-                      </Button>
-                      {!readOnly ? (
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="ghost"
-                          className="text-destructive"
-                          aria-label={`Eliminar comparable ${comparable.reference}`}
-                          onClick={() => confirmDeleteComparable({
-                            title: `¿Eliminar el comparable ${comparable.reference}?`,
-                            description: "Se quita de este mercado con sus factores y sus renglones del dictamen. Puedes regresarlo con «Deshacer» en el aviso, "
-                              + "con «Deshacer» del cálculo o con Ctrl+Z.",
-                            confirmLabel: "Eliminar comparable",
-                            onConfirm: () => void removeComparable(comparable),
-                          })}
-                        >
-                          <Trash2 data-icon="inline-start" /> Eliminar
-                        </Button>
-                      ) : null}
-                    </td>
-                  </SortableComparableRow>
-                );
-              })}
-              {!comparables.length ? (
-                <tr><td colSpan={5} className="px-2 py-6 text-center text-muted-foreground">Sin comparables todavía. Agrégalos aquí: sus tablas aparecen abajo, en el bloque de este mercado.</td></tr>
+            <SpecField label={specLabelOf("subjectArea", labels.subjectArea)} defaultLabel={labels.subjectArea} readOnly={readOnly} onRename={(label) => renameSpec("subjectArea", label)} htmlFor="market-subject-area">
+              <FormulaInput id="market-subject-area" grouping value={effectiveDraft?.subjectArea ?? ""} onChange={setDraftField("subjectArea")} />
+              {prefilled ? (
+                <p className="text-xs text-muted-foreground" data-subject-area-prefilled="">
+                  Tomada de la superficie {isLandComparableType(type) ? "de terreno" : "construida"} del avalúo; puedes cambiarla.
+                </p>
               ) : null}
-            </tbody>
-          </table>
-        </CalcTableContextMenu>
-        </SortableRows>
+            </SpecField>
+            {againstBase ? (
+              <SpecField label={specLabelOf("baseArea", "Lote tipo (m²)")} defaultLabel="Lote tipo (m²)" readOnly={readOnly} onRename={(label) => renameSpec("baseArea", label)} htmlFor="market-base-area">
+                <FormulaInput id="market-base-area" grouping value={draft.baseArea} onChange={setDraftField("baseArea")} />
+                {!draft.baseArea ? <p className="text-xs text-highlight-strong">Sin lote tipo, el factor de superficie usa el sujeto.</p> : null}
+              </SpecField>
+            ) : null}
+            <SpecField
+              label={specLabelOf("frontage", againstBase ? "Frente tipo en la zona" : "Frente del sujeto")}
+              defaultLabel={againstBase ? "Frente tipo en la zona" : "Frente del sujeto"}
+              unit="m"
+              readOnly={readOnly}
+              onRename={(label) => renameSpec("frontage", label)}
+              htmlFor="market-typical-frontage"
+            >
+              <FormulaInput id="market-typical-frontage" value={draft.typicalFrontage} onChange={setDraftField("typicalFrontage")} />
+            </SpecField>
+            <SpecField
+              label={specLabelOf("depth", againstBase ? "Fondo tipo en la zona" : "Fondo del sujeto")}
+              defaultLabel={againstBase ? "Fondo tipo en la zona" : "Fondo del sujeto"}
+              unit="m"
+              readOnly={readOnly}
+              onRename={(label) => renameSpec("depth", label)}
+              htmlFor="market-typical-depth"
+            >
+              <FormulaInput id="market-typical-depth" value={draft.typicalDepth} onChange={setDraftField("typicalDepth")} />
+            </SpecField>
+            {/* The power with its explanation beside it (video 8.7: «debería decir potencia n para cálculo de factor de superficie»). */}
+            <div className="grid gap-x-4 gap-y-1 sm:col-span-2 lg:col-span-4 lg:grid-cols-[minmax(0,16rem)_minmax(0,1fr)] lg:items-end" data-surface-power="">
+              <Field>
+                <FieldLabel htmlFor="market-power">Potencia n para cálculo del factor de superficie</FieldLabel>
+                <SurfacePowerSelect id="market-power" value={liveSettings.surfacePower} onChange={(surfacePower) => patchSettings({ surfacePower })} />
+              </Field>
+              <p className="text-sm text-muted-foreground lg:pb-2">
+                <span className="font-medium text-foreground" data-surface-formula="">{marketSurfaceFormula(liveSettings)}</span>. En cada comparable puedes
+                escribir otro factor de superficie en su celda de la homologación. Los campos numéricos aceptan cálculos: =5*10000.
+              </p>
+            </div>
+          </fieldset>
+          <p className="text-xs text-muted-foreground">
+            No se imprime así: el dictamen imprime la superficie, el {againstBase ? "lote tipo" : "sujeto"}, el frente y el fondo en los recuadros arriba de la homologación,
+            con los nombres que les des aquí.
+          </p>
+          <MarketOfferLevel
+            labels={offerLabelsOf(liveSettings)}
+            mark={offerMarkOf(liveSettings)}
+            intro={liveSettings.offerIntro ?? null}
+            defaultIntro={defaultOfferIntro(type)}
+            readOnly={readOnly}
+            onChange={(offer) => patchSettings({ ...offer, offerLevel: null })}
+          />
+        </div>
+      </CaptureSlot>
 
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap gap-2">
+      {/* Over the table of the comparables: adding, importing, searching and ordering them (video 8.10, 07:54). */}
+      <CaptureSlot at={{ table: tableOf("caracteristicas"), part: "before" }} fallback>
+        <div className="grid gap-2" data-market-comparables-bar="">
+          <div className="flex flex-wrap items-center gap-2">
             {!readOnly ? (
               <>
                 {/* V8.12: «Pegar anuncio» is one way to add a comparable, inside «Agregar comparable». */}
@@ -1049,11 +1190,7 @@ function MarketTypePanel(props: {
             {/* Searching only reads: a concluded valuation can still look, but not add. */}
             <SearchComparablesDialog key={type} valuationId={valuationId} type={type} readOnly={readOnly} onAdded={applyServerState} googleMaps={props.googleMaps} />
             {comparables.length ? (
-              <a
-                className={cn(buttonVariants({ variant: "ghost", size: "sm" }))}
-                href={`/api/avaluos/${valuationId}/mercado/comparables/exportar?tipo=${type}`}
-                download
-              >
+              <a className={cn(buttonVariants({ variant: "ghost", size: "sm" }))} href={`/api/avaluos/${valuationId}/mercado/comparables/exportar?tipo=${type}`} download>
                 <FileDown data-icon="inline-start" /> Exportar Excel
               </a>
             ) : null}
@@ -1072,27 +1209,85 @@ function MarketTypePanel(props: {
                 }}
               />
             ) : null}
+            {!readOnly && comparables.length > 1 ? (
+              <span className="ml-auto flex flex-wrap items-center gap-1 text-xs">
+                <Button type="button" size="sm" variant="ghost" title="Ordenar los comparables por su valor unitario, de menor a mayor" onClick={() => sortByUnitValue(1)}>
+                  <ArrowUpNarrowWide data-icon="inline-start" /> Ordenar por ${perUnit} ↑
+                </Button>
+                <Button type="button" size="sm" variant="ghost" title="Ordenar los comparables por su valor unitario, de mayor a menor" onClick={() => sortByUnitValue(-1)}>
+                  <ArrowDownWideNarrow data-icon="inline-start" /> Ordenar por ${perUnit} ↓
+                </Button>
+              </span>
+            ) : null}
           </div>
           {complete < MIN_COMPARABLES ? (
             <span className="flex items-center gap-1 text-xs text-highlight-strong">
               <AlertTriangle className="size-3.5" /> El dictamen lleva al menos {MIN_COMPARABLES} comparables completos ({complete} de {MIN_COMPARABLES}).
             </span>
           ) : null}
+          {!comparables.length ? (
+            <p className="text-sm text-muted-foreground">Sin comparables todavía: agrégalos aquí y sus datos aparecen en las tablas de abajo.</p>
+          ) : null}
         </div>
+      </CaptureSlot>
 
-        {comparables.length ? (
-        <details className="group mt-2 grid gap-2 border-t pt-3" data-characteristics-sheet="">
+      {/* «Ver ficha» and «Eliminar» at the end of each comparable's row, with its warnings (video 8.10, 11:13). */}
+      {comparables.map((comparable, index) => {
+        const row = captureAt.characteristics.rows[index];
+        if (!row) return null;
+        // Warnings only: the appraiser's judgement decides whether the comparable stays.
+        const warnings = comparableWarnings(
+          { ...comparable, hasScreenshot: Boolean(comparable.screenshot) },
+          {
+            type, subjectArea: liveSettings.subjectArea, today,
+            builtAreaTolerance: reviewThresholds.builtAreaTolerance,
+            offerMaxAgeMonths: comparable.validityMonths ?? reviewThresholds.offerMaxAgeMonths,
+          },
+        );
+        return (
+          <CaptureSlot key={comparable.id} at={{ table: captureAt.characteristics.table, row }}>
+            <ComparableRowActions
+              comparable={comparable}
+              first={index === 0}
+              last={index === comparables.length - 1}
+              warnings={warnings.map((warning) => warning.message)}
+              status={reviewStatusOf(comparable.review?.status ?? "POR_REVISAR", reviewThresholds.statuses, comparable.review).label}
+              statusTone={isVerifiedStatus(comparable.review?.status ?? "POR_REVISAR") ? "verified" : (comparable.review?.status ?? "POR_REVISAR") === "POR_REVISAR" ? "pending" : "other"}
+              readOnly={readOnly}
+              onOpen={() => setEditing(comparable)}
+              onMove={(by) => {
+                const ids = comparables.map((item) => item.id);
+                const [moved] = ids.splice(index, 1);
+                ids.splice(index + by, 0, moved);
+                void reorderComparables(ids, "Orden de los comparables guardado.");
+              }}
+              onDelete={() => confirmDeleteComparable({
+                title: `¿Eliminar el comparable ${comparable.reference}?`,
+                description: "Se quita de este mercado con sus factores y sus renglones del dictamen. Puedes regresarlo con «Deshacer» en el aviso, "
+                  + "con «Deshacer» del cálculo o con Ctrl+Z.",
+                confirmLabel: "Eliminar comparable",
+                onConfirm: () => void removeComparable(comparable),
+              })}
+            />
+          </CaptureSlot>
+        );
+      })}
+
+      {/* The sheet of characteristics of the subject and the comparables, between the comparables and their offers (video 8.10, 11:40). */}
+      <CaptureSlot at={{ table: tableOf("ofertas"), part: "before" }} fallback>
+        <details className="group grid gap-2 rounded-md border bg-background p-2" open={comparables.length > 0} data-characteristics-sheet="">
           <summary className="cursor-pointer text-sm font-semibold" data-characteristics-title="">
-            2.1 Hoja de características de sujeto y comparables
-            <span className="ml-2 text-xs font-normal text-muted-foreground">Frente, fondo, forma, servicios… y la columna del sujeto; el dictamen imprime la línea de cada comparable en su tabla de datos.</span>
+            Características del sujeto y los comparables
+            <span className="ml-2 text-xs font-normal text-muted-foreground">
+              No se imprime como tabla: el dictamen imprime la línea de cada comparable en «Características» de la tabla de comparables. Es la lista de datos de sus fichas.
+            </span>
           </summary>
-        {comparables.length && notShared && !readOnly ? (
-          <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-unshared-attributes="">
-            Hay {notShared} {notShared === 1 ? "característica agregada" : "características agregadas"} solo en las fichas.
-            <Button type="button" size="sm" variant="outline" onClick={shareAttributes}>Pasarlas a esta tabla</Button>
-          </p>
-        ) : null}
-        {comparables.length ? (
+          {comparables.length && notShared && !readOnly ? (
+            <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground" data-unshared-attributes="">
+              Hay {notShared} {notShared === 1 ? "característica agregada" : "características agregadas"} solo en las fichas.
+              <Button type="button" size="sm" variant="outline" onClick={shareAttributes}>Pasarlas a esta tabla</Button>
+            </p>
+          ) : null}
           <MarketCharacteristicsTable
             fields={fields}
             defaults={!liveSettings.characteristicFields}
@@ -1104,237 +1299,195 @@ function MarketTypePanel(props: {
             onFields={(update: FieldsUpdate) => patchSettings((current) => ({ characteristicFields: update(characteristicFieldsOf(current)) }))}
             onSubject={(update: SubjectUpdate) => patchSettings((current) => ({ subjectCharacteristics: update(current.subjectCharacteristics ?? {}) }))}
             onComparable={changeComparable}
+            onRemoveEverywhere={removeCharacteristicEverywhere}
           />
-        ) : null}
         </details>
-        ) : null}
-      </Part>
+      </CaptureSlot>
 
-      {/* After the comparables, as the appraiser asked (video of 27 Oct 2026); it prints only when its box is marked. */}
-      <Part number={3} title="Monto adicional" collapsible={{ open: liveSettings.additionalAmount > 0 }}>
-        <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => saveSettings()}>
-          <Field>
-            <FieldLabel htmlFor="market-additional">Monto adicional a considerar ($)</FieldLabel>
-            <FormulaInput id="market-additional" grouping value={draft.additionalAmount} placeholder="0" onChange={setDraftField("additionalAmount")} />
-          </Field>
-          <div className="flex flex-wrap items-end gap-4 pb-1 text-sm sm:col-span-3">
+      {/* Over the homologation: what its factors need that does not print (no «Homologar», no chips: the factors are its columns). */}
+      <CaptureSlot at={{ table: homologationTable, part: "before" }} fallback>
+        <div className="grid gap-2" data-market-homologation-bar="">
+          {type === "TERRENO_RENTA" ? <p className="text-sm font-medium" data-same-factors="">{SAME_FACTORS_AS_LAND_SALE}</p> : null}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+            {/* The precision is chosen in Carátula › Configuración del avalúo; here it is only said (video 7.4, 00:00). */}
+            <CalculationPrecisionSummary precision={calculation.precision} />
             <label className="flex items-center gap-1.5">
               <Checkbox
-                checked={liveSettings.additionalAmountInCalculation !== false}
-                onCheckedChange={(checked) => {
-                  const inCalculation = checked === true;
-                  // Out of the calculation it cannot print either.
-                  patchSettings({ additionalAmountInCalculation: inCalculation, ...(inCalculation ? {} : { showAdditionalAmount: false }) });
-                }}
-              />
-              Cálculo
-            </label>
-            <label className="flex items-center gap-1.5">
-              <Checkbox
-                checked={printsAdditionalAmount(liveSettings)}
-                disabled={readOnly || liveSettings.additionalAmountInCalculation === false}
-                onCheckedChange={(checked) => patchSettings({ showAdditionalAmount: checked === true })}
-              />
-              Mostrar en el dictamen
-            </label>
-          </div>
-        </fieldset>
-      </Part>
-
-      <Part
-        number={4}
-        title="Homologación"
-        aside={(
-          <span className="flex flex-wrap items-center gap-4 text-xs font-normal">
-            <label className="flex items-center gap-1.5">
-              <Checkbox
-                checked={homologatesOf(liveSettings)}
+                checked={liveSettings.showHomologationTable !== false}
                 disabled={readOnly}
-                aria-label="Homologar"
-                onCheckedChange={(checked) => patchSettings({ homologate: checked === true })}
-              />
-              Homologar
-            </label>
-            <label className="flex items-center gap-1.5">
-              <Checkbox
-                checked={homologatesOf(liveSettings) && liveSettings.showHomologationTable !== false}
-                disabled={readOnly || !homologatesOf(liveSettings)}
                 onCheckedChange={(checked) => patchSettings({ showHomologationTable: checked === true })}
               />
-              Mostrar en el dictamen
+              Imprimir la tabla de homologación en el dictamen
             </label>
-          </span>
-        )}
-      >
-        {!homologatesOf(liveSettings) ? (
-          <p className="rounded-md border border-highlight/50 bg-highlight/10 p-2 text-xs text-foreground" data-homologation-off="">
-            Sin homologación: ningún factor se aplica. El promedio, la mediana y el rango del ±30 % salen de los valores unitarios de las ofertas tal como
-            se capturaron, y el dictamen no imprime la tabla de homologación. Los factores capturados se conservan por si vuelves a homologar.
-          </p>
-        ) : null}
-        {type === "TERRENO_RENTA" && homologatesOf(liveSettings) ? <p className="text-sm font-medium" data-same-factors="">{SAME_FACTORS_AS_LAND_SALE}</p> : null}
-        {/* The precision is chosen in Carátula › Configuración del avalúo; here it is only said (video 7.4, 00:00). */}
-        <CalculationPrecisionSummary precision={calculation.precision} />
-        {homologatesOf(liveSettings) ? (<>
-        <MarketFactorSlots
-          slots={calculation.settings.factorSlots}
-          customFactors={customFactors}
-          readOnly={readOnly}
-          saving={savingSettings}
-          onChange={(factorSlots) => patchSettings({ factorSlots })}
-          onCreate={createFactor}
-        />
-        {ratedSlots.length ? (
-          <div className="grid gap-2 rounded-md border bg-background p-3">
-            <p className="text-xs text-muted-foreground">
-              Calificación del sujeto: se elige una vez y cada comparable solo elige la suya en la tabla; el factor se calcula solo.
-            </p>
-            <div className="grid gap-2 sm:grid-cols-3">
-              {ratedSlots.map((slot) => (
-                <Field key={slot.type}>
-                  <FieldLabel htmlFor={`subject-rating-${slot.type}`} className="text-xs">{slot.label}</FieldLabel>
-                  <NativeSelect
-                    id={`subject-rating-${slot.type}`}
-                    className="w-full"
-                    disabled={readOnly}
-                    value={slot.subjectOption ?? ""}
-                    onChange={(event) => patchSettings({ factorSlots: liveSettings.factorSlots.map((item) =>
-                        !item.key && item.type === slot.type ? { ...item, subjectOption: event.target.value || null } : item),
-                    })}
-                  >
-                    <NativeSelectOption value="">Sin elegir</NativeSelectOption>
-                    {optionsFor(catalog, slot.type).map((option) => (
-                      <NativeSelectOption key={option.label} value={option.label}>{option.label} ({option.value})</NativeSelectOption>
-                    ))}
-                  </NativeSelect>
-                </Field>
-              ))}
-            </div>
           </div>
-        ) : null}
-        <p className="text-xs text-muted-foreground" data-homologation-in-table="">
-          Los factores de cada comparable se escriben en la tabla «Homologación» de su bloque, abajo. Para renombrar un factor, escribe sobre su encabezado en esa tabla: el anexo de factores y la memoria toman el mismo nombre.
-        </p>
-        <MarketHomologationCapture
-          at={captureAt.homologation}
-          comparables={comparables}
-          slots={calculation.settings.factorSlots}
-          result={result}
-          catalog={catalog}
-          readOnly={readOnly}
-          note={{ show: liveSettings.showHomologationNote !== false, text: liveSettings.homologationNote ?? null, defaultText: DEFAULT_HOMOLOGATION_NOTE }}
-          onNote={(note) => patchSettings({ ...note })}
-          onFactors={changeComparable}
-          onInvalid={(message) => toast.error(message)}
-          decimals={factorDecimals(calculation.precision)}
-          surfaceFormulas={surfaceFactorFormulas({ settings: liveSettings, comparables }, calculation.precision)}
-        />
-        </>) : null}
-        {homologatesOf(liveSettings) && liveSettings.showHomologationTable === false ? (
-          <p className="text-xs text-muted-foreground" data-homologation-hidden="">
-            La tabla de homologación no se imprime en el dictamen; los datos de los comparables, las estadísticas y el valor sí. La memoria de cálculo
-            la conserva.
+          <p className="text-xs text-muted-foreground" data-homologation-in-table="">
+            Los factores son las columnas bajo «Factores de homologación»: escribe sobre un encabezado para renombrarlo, inserta una columna entre ellos para agregar un
+            factor o elimínala para quitarlo. El FRe es el producto de los factores y el anexo y la memoria toman los mismos nombres.
           </p>
-        ) : null}
-      </Part>
-
-      <Part number={5} title="Valor adoptado y estadísticas">
-        <fieldset disabled={readOnly} className="grid gap-3 sm:grid-cols-4" onBlur={() => saveSettings()}>
-          {/* The adopted value is typed in its box under the table of the dictamen; while that box is not there (no result yet), here. */}
-          <CaptureSlot at={captureAt.adopted} fallback>
-            <Field className="sm:col-span-2" data-adopted-field="">
-              <FieldLabel htmlFor="market-adopted" className="sr-only">{labels.adopted}</FieldLabel>
-              <FormulaInput
-                id="market-adopted"
-                grouping
-                disabled={readOnly}
-                aria-label={labels.adopted}
-                title={`${labels.adopted}: escríbelo aquí. Vacío, el promedio homologado.`}
-                value={draft.adoptedUnitValue}
-                placeholder={stats ? `Promedio: ${stats.mean.toFixed(2)}` : labels.adopted}
-                // Saved as typed: the field is always free to be retyped or cleared; only concluding waits for a value within the range.
-                className={cn("h-7 min-w-28 text-right text-xs", result?.adoptedOutsideLimits && "border-destructive focus-visible:ring-destructive/30")}
-                onChange={setDraftField("adoptedUnitValue")}
-                onBlur={() => saveSettings()}
-              />
-            </Field>
-          </CaptureSlot>
-          <Field>
-            <FieldLabel htmlFor="market-rounding">Redondeo del valor</FieldLabel>
-            <RoundingSelect
-              id="market-rounding"
-              label="Redondeo del valor"
-              value={liveSettings.rounding === undefined ? DEFAULT_ENGINE_CONFIG.rounding.market.comparativeValue : liveSettings.rounding}
-              onChange={(rounding) => patchSettings({ rounding })}
-            />
-          </Field>
-        </fieldset>
-        {result && stats ? (
-          <div className="grid gap-2 rounded-md border bg-background p-3 text-sm">
-            <p className="text-xs text-muted-foreground">
-              Estadísticas informativas: el promedio y la mediana son referencia para el valor que adoptas. Un valor fuera del rango permitido
-              se guarda, pero el avalúo no se puede concluir mientras este mercado esté en el informe.
-            </p>
-            {/* The statistics, the adopted value and the value of the approach are in the boxes of the table of the dictamen; here, only what it does not print. */}
-            <dl className="grid gap-x-4 gap-y-1 sm:grid-cols-3">
-              <div className="sm:col-span-2">
-                <dt className="text-xs text-muted-foreground">Rango permitido para el valor adoptado (±30 % del promedio y la mediana)</dt>
-                <dd className="tabular-nums">{money(result.adoptedLimits.min)} – {money(result.adoptedLimits.max)}</dd>
+          {ratedSlots.length ? (
+            <div className="grid gap-2 rounded-md border bg-background p-2">
+              <p className="text-xs text-muted-foreground">Calificación del sujeto: se elige una vez y cada comparable elige la suya en la tabla; el factor se calcula solo.</p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {ratedSlots.map((slot) => (
+                  <Field key={slot.type}>
+                    <FieldLabel htmlFor={`subject-rating-${slot.type}`} className="text-xs">{slot.label}</FieldLabel>
+                    <NativeSelect
+                      id={`subject-rating-${slot.type}`}
+                      className="w-full"
+                      disabled={readOnly}
+                      value={slot.subjectOption ?? ""}
+                      onChange={(event) => patchSettings({ factorSlots: liveSettings.factorSlots.map((item) =>
+                        !item.key && item.type === slot.type ? { ...item, subjectOption: event.target.value || null } : item),
+                      })}
+                    >
+                      <NativeSelectOption value="">Sin elegir</NativeSelectOption>
+                      {optionsFor(catalog, slot.type).map((option) => (
+                        <NativeSelectOption key={option.label} value={option.label}>{option.label} ({option.value})</NativeSelectOption>
+                      ))}
+                    </NativeSelect>
+                  </Field>
+                ))}
               </div>
-              {stats.dispersion > 1.25 ? (
-                <div>
-                  <dt className="text-xs text-muted-foreground">Dispersión final (máx. ÷ mín. homologados)</dt>
-                  <dd className="tabular-nums text-highlight-strong" data-dispersion="final">{stats.dispersion.toFixed(2)}</dd>
-                </div>
-              ) : null}
-            </dl>
-            {result.adoptedOutsideLimits ? (
+            </div>
+          ) : null}
+          {liveSettings.showHomologationTable === false ? (
+            <p className="text-xs text-muted-foreground" data-homologation-hidden="">
+              La tabla de homologación no se imprime en el dictamen; los datos de los comparables, las estadísticas y el valor sí. La memoria de cálculo la conserva.
+            </p>
+          ) : null}
+        </div>
+      </CaptureSlot>
+      <MarketHomologationCapture
+        at={captureAt.homologation}
+        comparables={comparables}
+        slots={calculation.settings.factorSlots}
+        result={result}
+        catalog={catalog}
+        readOnly={readOnly}
+        onFactors={changeComparable}
+        onInvalid={(message) => toast.error(message)}
+        decimals={factorDecimals(calculation.precision)}
+        surfaceFormulas={surfaceFactorFormulas({ settings: liveSettings, comparables }, calculation.precision)}
+      />
+
+      {/* Under the homologation: the values and statistics, then the additional amount and the justification, at the end (video 8.10, 04:18). */}
+      <CaptureSlot at={{ table: homologationTable, part: "after" }} fallback>
+        <div className="grid gap-3" data-market-values="">
+          <div className="grid gap-2 rounded-md border bg-background p-2" data-market-statistics="">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-semibold">Valores y estadísticas</h4>
+              <fieldset disabled={readOnly} className="flex items-center gap-2 text-sm">
+                <label htmlFor="market-rounding" className="text-xs text-muted-foreground">Redondeo del valor</label>
+                <RoundingSelect
+                  id="market-rounding"
+                  label="Redondeo del valor"
+                  value={liveSettings.rounding === undefined ? DEFAULT_ENGINE_CONFIG.rounding.market.comparativeValue : liveSettings.rounding}
+                  onChange={(rounding) => patchSettings({ rounding })}
+                />
+              </fieldset>
+            </div>
+            <StatisticsTable
+              choice={statisticsChoice}
+              values={(key) => statisticValueText(key, statisticsChoice, stats ?? null, homologatedValues)}
+              readOnly={readOnly}
+              onChange={(printedStatistics) => patchSettings({ printedStatistics })}
+            />
+            {result && stats ? (
+              <p className="text-sm">
+                <span className="text-muted-foreground">Rango permitido para el valor adoptado (±30 % del promedio y la mediana): </span>
+                <span className="tabular-nums">{money(result.adoptedLimits.min)} – {money(result.adoptedLimits.max)}</span>
+                {stats.dispersion > 1.25 ? (
+                  <span className="ml-3 text-highlight-strong" data-dispersion="final">Dispersión final {stats.dispersion.toFixed(2)} (los libros recomiendan menos de 1.25)</span>
+                ) : null}
+              </p>
+            ) : live?.reason ? (
+              <p className="text-sm text-muted-foreground">{live.reason}</p>
+            ) : null}
+            {result?.adoptedOutsideLimits ? (
               <p role="alert" className="flex items-center gap-1 text-sm font-medium text-destructive" data-adopted-outside="">
                 <AlertTriangle className="size-3.5 shrink-0" /> {ADOPTED_VALUE_OUTSIDE_MESSAGE}
               </p>
             ) : null}
-            <PrintedStatisticsControl
-              value={printedStatisticsOf(liveSettings)}
-              readOnly={readOnly}
-              onChange={(printedStatistics) => patchSettings({ printedStatistics })}
-            />
+            {/* The adopted value is typed in its box under the table; while that box is not there (no result yet), here. */}
+            <fieldset disabled={readOnly} onBlur={() => saveSettings()}>
+              <CaptureSlot at={captureAt.adopted} fallback>
+                <Field className="max-w-xs" data-adopted-field="">
+                  <FieldLabel htmlFor="market-adopted" className="sr-only">{labels.adopted}</FieldLabel>
+                  <FormulaInput
+                    id="market-adopted"
+                    grouping
+                    disabled={readOnly}
+                    aria-label={labels.adopted}
+                    title={`${labels.adopted}: escríbelo aquí. Vacío, el promedio homologado.`}
+                    value={draft.adoptedUnitValue}
+                    placeholder={stats ? `Promedio: ${money(stats.mean)}` : labels.adopted}
+                    // Saved as typed: the field is always free to be retyped or cleared; only concluding waits for a value within the range.
+                    className={cn("h-7 min-w-28 text-right", result?.adoptedOutsideLimits && "border-destructive focus-visible:ring-destructive/30")}
+                    onChange={setDraftField("adoptedUnitValue")}
+                    onBlur={() => saveSettings()}
+                  />
+                </Field>
+              </CaptureSlot>
+            </fieldset>
           </div>
-        ) : live?.reason ? (
-          <p className="text-sm text-muted-foreground">{live.reason}</p>
-        ) : null}
-      </Part>
 
-      <Part
-        number={6}
-        title="Justificación de los factores utilizados"
-        collapsible={{ open: Boolean(liveSettings.justification) || comparables.some((comparable) => comparable.factorJustification) }}
-        aside={(
-          <label className="flex items-center gap-1.5 text-xs font-normal">
-            <Checkbox
-              checked={liveSettings.showFactorJustification !== false}
-              disabled={readOnly}
-              onCheckedChange={(checked) => patchSettings({ showFactorJustification: checked === true })}
-            />
-            Mostrar en el dictamen
-          </label>
-        )}
-      >
-        <fieldset disabled={readOnly} className="grid gap-3" onBlur={() => saveSettings()}>
-          <Field>
-            <FieldLabel htmlFor="market-justification">Texto general (opcional)</FieldLabel>
-            <Textarea id="market-justification" rows={2} value={draft.justification} onChange={setDraftField("justification")} />
-          </Field>
-        </fieldset>
-        {comparables.map((comparable) => (
-          <ComparableJustification
-            key={`${comparable.id}:${comparable.factorJustification ?? ""}`}
-            comparable={comparable}
-            readOnly={readOnly}
-            onCommit={(factorJustification) => changeComparable(comparable, (current) => ({ ...current, factorJustification }))}
-          />
-        ))}
-        <p className="text-xs text-muted-foreground">Se imprime después de las tablas de homologación.</p>
-      </Part>
+          <fieldset disabled={readOnly} className="grid gap-2 rounded-md border bg-background p-2 sm:grid-cols-[minmax(0,16rem)_1fr] sm:items-end" onBlur={() => saveSettings()} data-additional-amount="">
+            <Field>
+              <FieldLabel htmlFor="market-additional">Monto adicional a considerar ($)</FieldLabel>
+              <FormulaInput id="market-additional" grouping value={draft.additionalAmount} placeholder="0" onChange={setDraftField("additionalAmount")} />
+            </Field>
+            <div className="flex flex-wrap items-center gap-4 pb-1 text-sm">
+              <label className="flex items-center gap-1.5">
+                <Checkbox
+                  checked={liveSettings.additionalAmountInCalculation !== false}
+                  onCheckedChange={(checked) => {
+                    const inCalculation = checked === true;
+                    // Out of the calculation it cannot print either.
+                    patchSettings({ additionalAmountInCalculation: inCalculation, ...(inCalculation ? {} : { showAdditionalAmount: false }) });
+                  }}
+                />
+                Entra al cálculo
+              </label>
+              <label className="flex items-center gap-1.5">
+                <Checkbox
+                  checked={printsAdditionalAmount(liveSettings)}
+                  disabled={readOnly || liveSettings.additionalAmountInCalculation === false}
+                  onCheckedChange={(checked) => patchSettings({ showAdditionalAmount: checked === true })}
+                />
+                Se imprime en el dictamen
+              </label>
+            </div>
+          </fieldset>
+
+          <details className="grid gap-2 rounded-md border bg-background p-2" open={Boolean(liveSettings.justification) || comparables.some((comparable) => comparable.factorJustification)}>
+            <summary className="flex cursor-pointer flex-wrap items-center gap-3 text-sm font-semibold">
+              Justificación de los factores utilizados
+              <label className="flex items-center gap-1.5 text-xs font-normal" onClick={(event) => event.stopPropagation()}>
+                <Checkbox
+                  checked={liveSettings.showFactorJustification !== false}
+                  disabled={readOnly}
+                  onCheckedChange={(checked) => patchSettings({ showFactorJustification: checked === true })}
+                />
+                Se imprime después de la homologación
+              </label>
+            </summary>
+            <fieldset disabled={readOnly} className="mt-2 grid gap-3" onBlur={() => saveSettings()}>
+              <Field>
+                <FieldLabel htmlFor="market-justification">Texto general (opcional)</FieldLabel>
+                <Textarea id="market-justification" rows={2} value={draft.justification} onChange={setDraftField("justification")} />
+              </Field>
+            </fieldset>
+            {comparables.map((comparable) => (
+              <ComparableJustification
+                key={`${comparable.id}:${comparable.factorJustification ?? ""}`}
+                comparable={comparable}
+                readOnly={readOnly}
+                onCommit={(factorJustification) => changeComparable(comparable, (current) => ({ ...current, factorJustification }))}
+              />
+            ))}
+          </details>
+        </div>
+      </CaptureSlot>
 
       {/* Each comparable in its rows of the tables of the dictamen: where it is, its surface and its offer are typed there. */}
       {comparables.map((comparable, index) => (
@@ -1392,6 +1545,7 @@ function MarketTypePanel(props: {
           initialImages={prefill?.images}
           comparable={editingComparable ? cardOf(comparables.find((item) => item.id === editingComparable.id) ?? editingComparable) : null}
           characteristicFields={fields}
+          fieldLabels={cardFieldLabels(liveSettings)}
           comparableType={type}
           unitLabel={priceLabel}
           readOnly={readOnly}
@@ -1473,18 +1627,6 @@ function useKeptEditorScroll(root: RefObject<HTMLElement | null>, key: string) {
   }, [root, key]);
 }
 
-/** A row of «2. Comparables» that drags by its handle to change the order (V7.2-14). */
-function SortableComparableRow(props: { comparable: ComparableDto; readOnly: boolean; children: ReactNode }) {
-  const { comparable } = props;
-  const sortable = useSortableRow(comparable.id, { disabled: props.readOnly, label: `Arrastrar el comparable ${comparable.reference}` });
-  return (
-    <tr {...sortable.row} className={cn(CALC_ROW, sortable.className)} data-comparable-row={formatComparableId(comparable.folio) ?? comparable.id}>
-      <td className="w-8 px-0.5 py-1.5">{sortable.handle}</td>
-      {props.children}
-    </tr>
-  );
-}
-
 /** "Comparable 1" and its text; sent when the appraiser leaves the field. */
 function ComparableJustification(props: { comparable: ComparableDto; readOnly: boolean; onCommit: (text: string | null) => void }) {
   const { comparable } = props;
@@ -1507,55 +1649,218 @@ function ComparableJustification(props: { comparable: ComparableDto; readOnly: b
   );
 }
 
-/** What each statistic is called where the appraiser chooses whether it prints. */
-const STATISTIC_LABELS: Record<MarketStatistic, string> = {
-  offerMin: "Mínimo de oferta",
-  offerMax: "Máximo de oferta",
-  initialDispersion: "Dispersión inicial",
-  min: "Mínimo homologado",
-  max: "Máximo homologado",
-  dispersion: "Dispersión final",
-  mean: "Promedio homologado",
-  median: "Mediana homologada",
-};
+
+/** The radio of the lote tipo, before the appraiser names it. */
+const PAGE_BASE_LABEL = "Lote tipo";
 
 /**
- * A box per statistic and its order (video 5.3, 11:50): the marked ones print
- * in the dictamen, in this order. The mean and the median print beside the
- * adopted value, the rest in the box of the dispersion.
+ * A datum of the specifications with its name written as the appraiser wants
+ * it to print (video 8.10, 09:22: «fondo del sujeto o fondo del bien
+ * valuado, como ellos lo quieran llamar»); emptied, the format's name.
  */
-function PrintedStatisticsControl(props: { value: PrintedStatistics; readOnly: boolean; onChange: (value: PrintedStatistics) => void }) {
-  const { order, hidden } = props.value;
-  const move = (index: number, step: -1 | 1) => {
-    const next = [...order];
-    const [item] = next.splice(index, 1);
-    next.splice(index + step, 0, item);
-    props.onChange({ order: next, hidden });
-  };
+function SpecField(props: { label: string; defaultLabel: string; unit?: string; readOnly: boolean; htmlFor: string; onRename: (label: string) => void; children: ReactNode }) {
   return (
-    <fieldset className="grid gap-1.5 border-t pt-2" disabled={props.readOnly} data-printed-statistics="">
-      <legend className="text-xs font-medium">Estadísticas en el dictamen</legend>
-      <p className="text-xs text-muted-foreground">
-        Las marcadas aparecerán en el dictamen, en este orden. El promedio y la mediana van junto al valor adoptado; las demás, en el recuadro de la dispersión.
-      </p>
-      <ol className="grid gap-1 sm:grid-cols-2">
-        {order.map((key, index) => (
-          <li key={key} className="flex items-center gap-1.5 text-sm">
-            <Checkbox
-              id={`printed-statistic-${key}`}
-              checked={!hidden.includes(key)}
-              onCheckedChange={(checked) => props.onChange({ order, hidden: checked === true ? hidden.filter((item) => item !== key) : [...hidden, key] })}
-            />
-            <label htmlFor={`printed-statistic-${key}`} className="flex-1">{STATISTIC_LABELS[key]}</label>
-            <Button type="button" size="icon-sm" variant="ghost" aria-label={`Subir ${STATISTIC_LABELS[key]}`} disabled={index === 0} onClick={() => move(index, -1)}>
-              <ArrowUp />
-            </Button>
-            <Button type="button" size="icon-sm" variant="ghost" aria-label={`Bajar ${STATISTIC_LABELS[key]}`} disabled={index === order.length - 1} onClick={() => move(index, 1)}>
-              <ArrowDown />
-            </Button>
-          </li>
-        ))}
-      </ol>
-    </fieldset>
+    <Field>
+      <span className="flex items-center gap-1">
+        <CommitCell
+          ariaLabel={`Nombre de «${props.label}»`}
+          disabled={props.readOnly}
+          value={props.label}
+          placeholder={props.defaultLabel}
+          title="Escribe el nombre con el que se imprime; vacío, vuelve el del formato"
+          className="h-6 border-transparent px-0 text-sm font-medium text-foreground hover:border-input focus-visible:border-input"
+          onCommit={(text) => props.onRename(text.trim() === props.defaultLabel ? "" : text)}
+        />
+        {props.unit ? <span className="text-xs text-muted-foreground">({props.unit})</span> : null}
+        <label htmlFor={props.htmlFor} className="sr-only">{props.label}</label>
+      </span>
+      {props.children}
+    </Field>
+  );
+}
+
+/**
+ * What a comparable's row of the table of comparables does, at its end (video
+ * 8.10, 11:13: «ver ficha, eliminar»): move it, open its card, delete it; its
+ * warnings, as a sign with the reasons.
+ */
+function ComparableRowActions(props: {
+  comparable: ComparableDto;
+  first: boolean;
+  last: boolean;
+  warnings: string[];
+  /** Its review state, as the firm names it (video 8.12), and how it reads. */
+  status: string;
+  statusTone: "verified" | "pending" | "other";
+  readOnly: boolean;
+  onOpen: () => void;
+  onMove: (by: -1 | 1) => void;
+  onDelete: () => void;
+}) {
+  const { comparable, readOnly } = props;
+  return (
+    <span className="flex items-center gap-0.5" data-comparable-actions={formatComparableId(comparable.folio) ?? comparable.id}>
+      <span className={cn("px-1 text-xs whitespace-nowrap", props.statusTone === "verified" ? "text-success-strong" : props.statusTone === "pending" ? "text-muted-foreground" : "text-highlight-strong")} data-review-status="">{props.status}</span>
+      {props.warnings.length ? (
+        <span className="px-0.5 text-highlight-strong" title={props.warnings.join("\n")} data-comparable-warnings="">
+          <AlertTriangle className="size-3.5" aria-label={`Avisos del comparable ${comparable.reference}: ${props.warnings.join(" ")}`} />
+        </span>
+      ) : null}
+      {!readOnly ? (
+        <>
+          <Button type="button" size="icon-sm" variant="ghost" aria-label={`Subir el comparable ${comparable.reference}`} disabled={props.first} onClick={() => props.onMove(-1)}>
+            <ArrowUp />
+          </Button>
+          <Button type="button" size="icon-sm" variant="ghost" aria-label={`Bajar el comparable ${comparable.reference}`} disabled={props.last} onClick={() => props.onMove(1)}>
+            <ArrowDown />
+          </Button>
+        </>
+      ) : null}
+      {/* One window (V8.2): «Ver ficha» opens the card, editable in place. */}
+      <Button type="button" size="sm" variant="ghost" className="h-7 px-1.5 text-xs" aria-label={`Ver ficha del comparable ${comparable.reference}`} onClick={props.onOpen}>
+        <IdCard data-icon="inline-start" /> Ver ficha
+      </Button>
+      {!readOnly ? (
+        <Button type="button" size="sm" variant="ghost" className="h-7 px-1.5 text-xs text-destructive" aria-label={`Eliminar comparable ${comparable.reference}`} onClick={props.onDelete}>
+          <Trash2 data-icon="inline-start" /> Eliminar
+        </Button>
+      ) : null}
+    </span>
+  );
+}
+
+/** The figure of a statistic of the box, as it prints: in pesos with thousands, a dispersion with two decimals; «—» while there is no result. */
+function statisticValueText(key: StatisticKey, choice: PrintedStatistics, stats: HomologationStats | null, homologated: readonly number[]): string {
+  if (!stats) return "—";
+  const extra = choice.extra?.find((item) => item.id === key);
+  if (extra) return extraStatisticText(extra, stats, homologated) ?? "—";
+  switch (key) {
+    case "initialDispersion": return stats.initialDispersion.toFixed(2);
+    case "dispersion": return stats.dispersion.toFixed(2);
+    case "offerMin": return money(stats.offerMin);
+    case "offerMax": return money(stats.offerMax);
+    case "min": return money(stats.min);
+    case "max": return money(stats.max);
+    case "mean": return money(stats.mean);
+    case "median": return money(stats.median);
+    default: return "—";
+  }
+}
+
+/**
+ * The statistics of the market as a small table (video 8.10, 00:28–06:20):
+ * which print (the box), their names as they print, their order, and
+ * statistics of the appraiser's own (moda, desviación… or a formula over
+ * PROMEDIO, MEDIANA, MINIMO, MAXIMO, DESVEST, N). The mean and the median
+ * print beside the adopted value, the rest in the box of the dispersion.
+ */
+function StatisticsTable(props: {
+  choice: PrintedStatistics;
+  values: (key: StatisticKey) => string;
+  readOnly: boolean;
+  onChange: (choice: PrintedStatistics) => void;
+}) {
+  const { choice, readOnly } = props;
+  const [adding, setAdding] = useState<ExtraStatisticKind | "">("");
+  const move = (index: number, by: -1 | 1) => {
+    const order = [...choice.order];
+    const [key] = order.splice(index, 1);
+    order.splice(index + by, 0, key);
+    props.onChange({ ...choice, order });
+  };
+  const add = (kind: ExtraStatisticKind) => props.onChange(withExtraStatistic(choice, kind, `custom:${Date.now().toString(36)}`));
+  return (
+    <div className="grid gap-1.5">
+      <CalcTableContextMenu className={CALC_TABLE_FRAME} readOnly>
+        <table className={cn(CALC_TABLE, "w-full text-sm")} aria-label="Estadísticas del mercado">
+          <thead className={CALC_HEAD}>
+            <tr>
+              <th className={cn(CALC_HEAD_CELL, "w-16")}>Imprimir</th>
+              <th className={cn(CALC_HEAD_CELL, "text-left")}>Estadístico (como se imprime)</th>
+              <th className={cn(CALC_HEAD_CELL, "w-40 text-right")}>Valor</th>
+              <th className={cn(CALC_HEAD_CELL, "w-28")}><span className="sr-only">Orden</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {choice.order.map((key, index) => {
+              const extra = choice.extra?.find((item) => item.id === key);
+              const label = statisticLabel(choice, key);
+              return (
+                <tr key={key} className={CALC_ROW} data-statistic={key}>
+                  <td className="px-2 py-1 text-center">
+                    <Checkbox
+                      aria-label={`Imprimir ${label}`}
+                      checked={!choice.hidden.includes(key)}
+                      disabled={readOnly}
+                      onCheckedChange={(checked) => props.onChange({ ...choice, hidden: checked === true ? choice.hidden.filter((item) => item !== key) : [...choice.hidden, key] })}
+                    />
+                  </td>
+                  <td className="px-1 py-1">
+                    <span className="grid gap-1">
+                      <CommitCell
+                        ariaLabel={`Nombre de ${label}`}
+                        disabled={readOnly}
+                        value={label}
+                        className="border-input text-sm text-foreground"
+                        onCommit={(text) => props.onChange(withStatisticLabel(choice, key, text))}
+                      />
+                      {extra?.kind === "formula" ? (
+                        <CommitCell
+                          ariaLabel={`Fórmula de ${label}`}
+                          disabled={readOnly}
+                          value={extra.formula ?? ""}
+                          placeholder="=PROMEDIO*0.95"
+                          title="Usa PROMEDIO, MEDIANA, MINIMO, MAXIMO, DESVEST y N: =(MAXIMO-MINIMO)/PROMEDIO"
+                          className="border-input font-mono text-xs"
+                          onCommit={(text) => props.onChange(withExtraStatisticFormula(choice, key, text))}
+                        />
+                      ) : null}
+                    </span>
+                  </td>
+                  <td className="px-2 py-1 text-right tabular-nums">{props.values(key)}</td>
+                  <td className="px-1 py-1">
+                    {!readOnly ? (
+                      <span className="flex items-center justify-end gap-0.5">
+                        <Button type="button" size="icon-sm" variant="ghost" aria-label={`Subir ${label}`} disabled={index === 0} onClick={() => move(index, -1)}>
+                          <ArrowUp />
+                        </Button>
+                        <Button type="button" size="icon-sm" variant="ghost" aria-label={`Bajar ${label}`} disabled={index === choice.order.length - 1} onClick={() => move(index, 1)}>
+                          <ArrowDown />
+                        </Button>
+                        {extra ? (
+                          <Button type="button" size="icon-sm" variant="ghost" className="text-destructive" aria-label={`Quitar ${label}`} onClick={() => props.onChange(withoutExtraStatistic(choice, key))}>
+                            <Trash2 />
+                          </Button>
+                        ) : null}
+                      </span>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </CalcTableContextMenu>
+      {!readOnly ? (
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <NativeSelect
+            size="sm"
+            aria-label="Estadístico por agregar"
+            value={adding}
+            className="w-56 text-xs"
+            onChange={(event) => setAdding(event.target.value as ExtraStatisticKind | "")}
+          >
+            <NativeSelectOption value="">Agregar estadístico…</NativeSelectOption>
+            {EXTRA_STATISTIC_KINDS.map((kind) => (
+              <NativeSelectOption key={kind} value={kind}>{EXTRA_STATISTIC_LABELS[kind]}</NativeSelectOption>
+            ))}
+          </NativeSelect>
+          <Button type="button" size="sm" variant="outline" className="h-7 text-xs" disabled={!adding} onClick={() => { if (adding) add(adding); setAdding(""); }}>
+            <Plus data-icon="inline-start" /> Agregar
+          </Button>
+          <span className="text-muted-foreground">Las marcadas se imprimen en este orden: el promedio y la mediana junto al valor adoptado, las demás en el recuadro de la dispersión.</span>
+        </div>
+      ) : null}
+    </div>
   );
 }

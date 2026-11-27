@@ -67,24 +67,30 @@ test("the market page is one block with the comparables data and the homologatio
   assert.deepEqual(blocks[0].apartados.map((apartado) => apartado.title), ["DATOS DE COMPARABLES (TERRENOS)", "HOMOLOGACIÓN (TERRENOS)"]);
 
   const characteristics = printed(data.tables[0]);
-  assert.deepEqual(characteristics.columns, ["REF.", "UBICACIÓN", "USO DE SUELO", "CARACTERÍSTICAS"]);
+  assert.deepEqual(characteristics.columns, ["REF.", "ID", "UBICACIÓN", "USO DE SUELO", "CARACTERÍSTICAS"], "Ref., ID, location, land use and characteristics, as the Excel (video 8.10, 11:13)");
   assert.deepEqual(characteristics.rows[0], [
     "1",
+    "—",
     "Calle Villa Toledo, Arandas, Jalisco.",
     "AU-I/CS-D (Área Urbana-Incorporada / Comercial y Servicios Distrital)",
     "USO DE SUELO: AU-I/CS-D ; FORMA: Regular ; ZONA: Calle Inferior ; FRENTE: 8.00 m ; FONDO: 17.50 m ; SUPERFICIE: 140.00 m² ; "
       + "TOPOGRAFÍA: Plano (<6%) ; SERVICIOS: Completos ; OFERTA: $1,260,000.00",
   ]);
-  assert.equal(characteristics.rows[1][3], "SUPERFICIE: 192.50 m² ; OFERTA: $2,032,590.00", "what was not captured is left out");
+  assert.equal(characteristics.rows[1][4], "SUPERFICIE: 192.50 m² ; OFERTA: $2,032,590.00", "what was not captured is left out");
   assert.equal(characteristics.schema?.hideCaption, true, "the table's name is not printed as a caption");
 
   const offers = printed(data.tables[1]);
-  assert.deepEqual(offers.columns, ["REF.", "CONTACTO", "TELÉFONO", "FECHA", "SUPERFICIE DE TERRENO (m²)", "OFERTA $ (TERRENO)", "$/m²"]);
+  // The source, the phone and the contact apart, named as the card names them (video 8.9, 03:20: «esto no es contacto, es fuente»).
+  assert.deepEqual(offers.columns, ["REF.", "FUENTE O PORTAL", "TELÉFONO", "CONTACTO", "FECHA DE LA OFERTA", "SUPERFICIE DE TERRENO (m²)", "OFERTA $ (TERRENO)", "$/m²"]);
   // The advertiser's name and phone print only when the appraiser includes them (matrix 1.5 bis): off by default.
-  assert.deepEqual(offers.rows[0], ["1", "Altos 360", "—", "04/05/2026", "140.00", "$ 1,260,000.00", "$ 9,000.00"]);
+  assert.deepEqual(offers.rows[0], ["1", "Altos 360", "—", "—", "04/05/2026", "140.00", "$ 1,260,000.00", "$ 9,000.00"]);
   const included = printed(marketDocumentBlocks(calculation, result(), { advertiserData: true })[0].apartados[0].tables[1]);
   assert.deepEqual(included.rows[0].slice(0, 3), ["1", "Altos 360", "348 249 3129"]);
-  assert.equal(offers.rows[1][3], "—", "no offer date");
+  assert.equal(offers.rows[1][4], "—", "no offer date");
+  // The editor sees the phone the card has, and says the dictamen does not print it (video 8.9, 00:01).
+  const capture = printed(marketDocumentBlocks(calculation, result(), { capture: true })[0].apartados.find((apartado) => apartado.id.endsWith("-datos"))!.tables[1]);
+  assert.equal(capture.rows[0][2], "348 249 3129");
+  assert.match(JSON.stringify(capture.schema?.notes ?? []), /Incluir datos del anunciante/);
   assert.deepEqual(offers.align.slice(-2), ["right", "right"], "amounts are right-aligned");
 
   const table = printed(homologation.tables[0]);
@@ -118,7 +124,9 @@ test("the boxes of the homologation lead from the homologated values to the valu
     { label: "Lote Sujeto:", value: "169.78 m²", mark: true },
   ], "without a lote tipo the homologation is against the subject; the box gives both options, as the format");
   assert.deepEqual(boxRows(table, "sujeto"), [["Superficie del sujeto (m²):", "169.78 m²"]]);
-  assert.deepEqual(boxRows(table, "valores")?.[1], ["Valor homologado a utilizar ($/m²):", "$ 9,000.00"]);
+  // The median prints beside the mean again (video 8.10, 00:16), then the value adopted.
+  assert.match(boxRows(table, "valores")?.[1].join(" ") ?? "", /^Valor Mediana Homologado \(\$\/m²\): \$ \d,\d{3}\.\d{2}$/);
+  assert.deepEqual(boxRows(table, "valores")?.[2], ["Valor homologado a utilizar ($/m²):", "$ 9,000.00"]);
   assert.match(boxRows(table, "valores")?.[0].join(" ") ?? "", /^Valor Prom\. Homologado \(\$\/m²\): \$ \d,\d{3}\.\d{2}$/);
   assert.deepEqual(boxRows(table, "valor"), [
     ["Superficie del sujeto:", "169.78 m²"],
@@ -165,18 +173,18 @@ test("rents and built properties use the same page with their own wording", () =
   assert.equal(block.title, "MERCADO DE RENTAS");
   assert.deepEqual(block.apartados.map((apartado) => apartado.title), ["DATOS DE COMPARABLES (INMUEBLES EN RENTA)", "HOMOLOGACIÓN (RENTAS)"]);
   assert.deepEqual(printed(block.apartados[0].tables[1]).columns.slice(-3), ["SUP. RENTABLE (m²)", "RENTA MENSUAL $", "$/m²/mes"]);
-  assert.equal(printed(block.apartados[0].tables[1]).columns[3], "CONSERVACIÓN", "buildings give the conservation where land gives the date");
+  assert.equal(printed(block.apartados[0].tables[1]).columns[4], "CONSERVACIÓN", "buildings give the conservation where land gives the date");
   const homologation = block.apartados[1].tables[0];
   assert.equal(printed(homologation).columns.at(-1), "Renta Unitaria Homologada $/m²/mes");
-  assert.deepEqual(boxRows(homologation, "valores")?.[1], ["Renta homologada a utilizar ($/m²/mes):", "$ 30.00"]);
+  assert.deepEqual(boxRows(homologation, "valores")?.at(-1), ["Renta homologada a utilizar ($/m²/mes):", "$ 30.00"]);
   assert.equal(boxRows(homologation, "valor")?.at(-1)?.[0], "RENTA MENSUAL ESTIMADA DEL SUJETO:");
 
   const built: MarketCalculationDto = { ...calculation, settings: { ...calculation.settings, comparableType: "INMUEBLE_VENTA" } };
   const [builtBlock] = marketDocumentBlocks(built, compute(built));
   assert.equal(builtBlock.title, "ENFOQUE COMPARATIVO DE MERCADO (INMUEBLES)");
   const builtOffers = printed(builtBlock.apartados.find((apartado) => apartado.title.startsWith("DATOS"))!.tables[1]);
-  assert.equal(builtOffers.columns[3], "CONSERVACIÓN");
-  assert.equal(builtOffers.rows[0][3], built.comparables[0].conservation ?? "—");
+  assert.equal(builtOffers.columns[4], "CONSERVACIÓN");
+  assert.equal(builtOffers.rows[0][4], built.comparables[0].conservation ?? "—");
   assert.equal(boxRows(builtBlock.apartados[1].tables[0], "valor")?.at(-1)?.[0], "VALOR COMPARATIVO DE MERCADO (INMUEBLES):");
 });
 
@@ -345,7 +353,8 @@ test("the typical frontage and depth of the zone print beside the lote tipo, eac
 
 test("fronts, the land use key, conservation and quality print where the format has them", () => {
   const rows = (comparables: ComparableDto[], type: MarketCalculationDto["settings"]["comparableType"] = "TERRENO_VENTA") =>
-    printed(marketDocumentBlocks({ ...calculation, settings: { ...calculation.settings, comparableType: type }, comparables }, null)[0].apartados[0].tables[0]).rows;
+    // Without the column of the ID (REF., UBICACIÓN, USO DE SUELO, CARACTERÍSTICAS).
+    printed(marketDocumentBlocks({ ...calculation, settings: { ...calculation.settings, comparableType: type }, comparables }, null)[0].apartados[0].tables[0]).rows.map((row) => [row[0], ...row.slice(2)]);
   const description = "Área Urbana-Incorporada / Comercial y Servicios Distrital";
 
   const [separate, legacy, keyOnly, plain] = rows([

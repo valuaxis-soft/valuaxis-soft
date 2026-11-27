@@ -207,6 +207,13 @@ export type GeneratedExtraRow = {
   cells: Record<string, TableCellV2>;
 };
 
+/**
+ * A note of a table the calculation writes as the appraiser left it: one of
+ * the calculation's (`key`), with his text when he changed it, or one of his
+ * own (no `key`); `removed` keeps a note of the calculation out.
+ */
+export type GeneratedTableNote = TableNote & { key?: string; removed?: boolean; edited?: boolean };
+
 /** A double header the appraiser set on a table the calculation writes: one title over these columns. */
 export type GeneratedHeaderGroup = { id: string; title: string; columnIds: string[] };
 
@@ -218,6 +225,19 @@ export type GeneratedHeaderGroup = { id: string; title: string; columnIds: strin
 export type GeneratedTableLayout = {
   /** Columns left out of the printed table, by id; the editor keeps showing them, faded. */
   hidden?: string[];
+  /**
+   * Columns of the calculation the appraiser took out («Eliminar columna»,
+   * video 8.9): neither printed nor shown; «Volver a mostrar» under the table
+   * or Ctrl+Z puts them back.
+   */
+  removed?: string[];
+  /**
+   * The notes of the table as the appraiser left them (video 8.7: «que se
+   * vean, editables, agregar, quitar, mover»), in their order; absent, the
+   * calculation's. Each note of the calculation keeps its key (`noteKey`), so
+   * the next calculation writes its text again unless the appraiser changed it.
+   */
+  notes?: GeneratedTableNote[];
   /** Rows left out of the printed table, by id. */
   hiddenRows?: string[];
   /** Headers renamed, by column id or header group id. */
