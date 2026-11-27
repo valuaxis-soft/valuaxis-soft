@@ -84,19 +84,28 @@ export function useValuationSave({
   // A field of a panel typed in and still focused: it sends what it holds when it is left, so leaving from it
   // (the back arrow without taking the focus, Atrás, the command palette) lost it without asking (27 Nov 2026).
   const [unsentField, setUnsentField] = useState(false);
+  const unsentRef = useRef(false);
   useEffect(() => {
+    // Marked once per typing, in a task of its own: a render of the editor inside the field's input event,
+    // before the field's own onChange, wrote its old value back and the first letter typed was lost.
+    const mark = (unsent: boolean) => window.setTimeout(() => {
+      if (unsentRef.current === unsent) return;
+      unsentRef.current = unsent;
+      setUnsentField(unsent);
+    }, 0);
     const onInput = (event: Event) => {
-      if (isCalculationTypingField(event.target)) setUnsentField(true);
+      if (!unsentRef.current && isCalculationTypingField(event.target)) mark(true);
     };
     // Left, the field sends it: by the next task it is on its way, and `panelSaving` holds the editor from there.
     const onFocusOut = (event: FocusEvent) => {
-      if (isCalculationTypingField(event.target)) window.setTimeout(() => setUnsentField(false), 0);
+      if (isCalculationTypingField(event.target)) mark(false);
     };
-    document.addEventListener("input", onInput, true);
-    document.addEventListener("focusout", onFocusOut, true);
+    // Bubbling, after React has handled the event in its root.
+    document.addEventListener("input", onInput);
+    document.addEventListener("focusout", onFocusOut);
     return () => {
-      document.removeEventListener("input", onInput, true);
-      document.removeEventListener("focusout", onFocusOut, true);
+      document.removeEventListener("input", onInput);
+      document.removeEventListener("focusout", onFocusOut);
     };
   }, []);
   /** Leaving now loses work: the editor asks first, wherever the appraiser goes. */

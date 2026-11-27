@@ -225,8 +225,8 @@ test("«Guardar y salir» sends the focused field first, as leaving it does, and
 test("the editor asks before leaving while a field of a panel holds what was typed: back arrow, links, palette and Atrás", () => {
   const hook = source("src/features/valuations/components/workspace/hooks/use-valuation-save.ts");
   assert.match(hook, /const mustAskBeforeLeaving = hasUnsavedChanges \|\| panelSaving \|\| unsentField;/);
-  assert.match(hook, /document\.addEventListener\("input", onInput, true\);/);
-  assert.match(hook, /document\.addEventListener\("focusout", onFocusOut, true\);/);
+  assert.match(hook, /document\.addEventListener\("input", onInput\);/);
+  assert.match(hook, /document\.addEventListener\("focusout", onFocusOut\);/);
   // Every way out reads the same question: handleExit, the links, the palette (setLeaveGuard) and Atrás (the history copy).
   for (const guard of [/if \(mustAskBeforeLeaving\) \{\n\s+setPendingExit/, /if \(!mustAskBeforeLeaving \|\| leavingRef\.current\) return false;/, /if \(!mustAskBeforeLeaving \|\| historyGuardRef\.current\) return;/]) {
     assert.match(hook, guard);
@@ -234,4 +234,16 @@ test("the editor asks before leaving while a field of a panel holds what was typ
   const save = hook.slice(hook.indexOf("const handleSaveAndExit"), hook.indexOf("const exitWithoutSaving"));
   assert.ok(save.indexOf("sendFocusedCalculationField") < save.indexOf("pendingMutationsSettled"), "sent, then waited for");
   assert.match(source("src/features/valuations/components/workspace/valuation-editor-panel.tsx"), /data-calculation-panel=""/);
+});
+
+test("marking the field as typed never renders the editor inside the field's input event: the first letter stays", () => {
+  // A capture listener that set state rendered the whole editor before the field's onChange, and React wrote the
+  // old value back over the first letter («Flecha real» was saved «lecha real»).
+  const hook = source("src/features/valuations/components/workspace/hooks/use-valuation-save.ts");
+  const guard = hook.slice(hook.indexOf("const [unsentField, setUnsentField]"), hook.indexOf("const mustAskBeforeLeaving"));
+  assert.doesNotMatch(guard, /addEventListener\("(input|focusout)", [a-zA-Z]+, true\)/, "bubbling, after React's root");
+  assert.match(guard, /const mark = \(unsent: boolean\) => window\.setTimeout\(\(\) => \{/, "in a task of its own");
+  assert.match(guard, /if \(unsentRef\.current === unsent\) return;/, "once per typing, not a render per letter");
+  const onInput = guard.slice(guard.indexOf("const onInput"), guard.indexOf("const onFocusOut"));
+  assert.doesNotMatch(onInput, /setUnsentField\(/, "never set inside the event");
 });
