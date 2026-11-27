@@ -57,3 +57,49 @@ export function countByLayer(pins: readonly { type: ComparableType }[]): Record<
 export const VALUATION_PIN_COLOR = "#0b3a5b";
 /** The center and circle of the radius search. */
 export const RADIUS_COLOR = "#1f7ac2";
+
+/**
+ * The layers by kind (video 8.12, 16:20: «casas en venta, casas en renta,
+ * oficinas, naves industriales… según los comparables que ya tenga»): a
+ * layer per kind and operation among the pins, in the order of the markets,
+ * with its count. Only the kinds that have comparables are listed.
+ */
+export interface KindLayer {
+  key: string;
+  type: ComparableType;
+  title: string;
+  color: string;
+  count: number;
+}
+
+/** The layer of a pin: its market and its kind. */
+export const kindLayerKey = (pin: { type: ComparableType; kind?: { key: string } | null }) => `${pin.type}|${pin.kind?.key ?? ""}`;
+
+const operationOf = (type: ComparableType) => (type === "INMUEBLE_RENTA" || type === "TERRENO_RENTA" ? "en renta" : "en venta");
+
+export function kindLayersOf(pins: readonly { type: ComparableType; kind?: { key: string; label: string } | null }[]): KindLayer[] {
+  const layers = new Map<string, KindLayer>();
+  for (const pin of pins) {
+    const key = kindLayerKey(pin);
+    const known = layers.get(key);
+    if (known) {
+      known.count += 1;
+      continue;
+    }
+    const market = baseMapLayer(pin.type);
+    layers.set(key, {
+      key,
+      type: pin.type,
+      title: pin.kind ? `${pin.kind.label} ${operationOf(pin.type)}` : `${market.title} (sin tipo)`,
+      color: market.color,
+      count: 1,
+    });
+  }
+  const rank = (type: ComparableType) => BASE_MAP_LAYERS.findIndex((layer) => layer.type === type);
+  return [...layers.values()].sort((a, b) => rank(a.type) - rank(b.type) || a.title.localeCompare(b.title, "es-MX"));
+}
+
+/** The pins of the layers on: their market on and their kind not taken off. */
+export function visibleKindPins<T extends { type: ComparableType; kind?: { key: string } | null }>(pins: readonly T[], layers: LayerVisibility, hidden: ReadonlySet<string>) {
+  return pins.filter((pin) => layers[pin.type] && !hidden.has(kindLayerKey(pin)));
+}

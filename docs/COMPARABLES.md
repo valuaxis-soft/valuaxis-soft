@@ -253,3 +253,8 @@ Sin migración: lo nuevo vive en tablas y columnas JSON que ya existían.
 - Coordenadas: `DireccionPropiedad` exige latitud y longitud, así que la dirección capturada (ahora por partes, con latitud y longitud a mano) se guarda solo en el snapshot hasta tener mapa y geocodificación.
 
 La metodología está en [fase0/metodologia/02-mercado-homologacion.md](fase0/metodologia/02-mercado-homologacion.md).
+
+## Capas por tipo de inmueble y nombres de la ficha (videos 8.9 y 8.12, 26 nov 2026)
+
+- El mapa de la base de comparables (también en «Buscar comparables») ya no tiene cuatro capas fijas: «Capas» abre una lista con una capa por tipo de inmueble y operación que tenga comparables («Casa habitación en venta», «Oficina en renta», «Terreno / Lote en venta»…), con su conteo; se marcan las que se quieren ver (`kindLayersOf` en `features/maps/base-map/layers.ts`; el pin lleva su tipo, `kind`).
+- En la ficha, «Posición en manzana» se llama «Ubicación en manzana» (intermedio, esquina, manzanero: de ahí sale el factor de ubicación) y «Anunciante» se llama «Contacto», como las columnas de las tablas del mercado. Los nombres que el valuador da a un dato desde el encabezado de su columna se ven en la ficha de ese mercado (`fieldLabels`).

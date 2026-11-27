@@ -41,6 +41,13 @@ const GENERATED_BLOCK_PREFIXES: Partial<Record<ReportApproach, readonly string[]
   "mercado-rentas": ["motor-mercado-inmueble_renta", "motor-mercado-terreno_renta"],
 };
 
+/** The switch of «Agregar al informe valuatorio» a market goes with: land or buildings for sale, and the rents (both kinds) in one. */
+export function marketReportApproach(type: "TERRENO_VENTA" | "INMUEBLE_VENTA" | "INMUEBLE_RENTA" | "TERRENO_RENTA"): ReportApproach {
+  if (type === "TERRENO_VENTA") return "mercado-terrenos";
+  if (type === "INMUEBLE_VENTA") return "mercado-inmuebles";
+  return "mercado-rentas";
+}
+
 export function isReportApproach(value: unknown): value is ReportApproach {
   return typeof value === "string" && (REPORT_APPROACHES as readonly string[]).includes(value);
 }

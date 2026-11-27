@@ -2,7 +2,7 @@
 
 /// <reference types="google.maps" />
 
-import { Crosshair, ExternalLink, Loader2, Search } from "lucide-react";
+import { ChevronDown, Crosshair, ExternalLink, Loader2, Search } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -13,11 +13,12 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { clusterPoints, zoomIntoCluster } from "@/features/maps/base-map/clustering";
 import {
-  BASE_MAP_LAYERS, RADIUS_COLOR, VALUATION_PIN_COLOR, baseMapLayer, countByLayer, layerVisibility, pinStyle, visiblePins, type LayerVisibility,
+  BASE_MAP_LAYERS, RADIUS_COLOR, VALUATION_PIN_COLOR, baseMapLayer, countByLayer, kindLayersOf, layerVisibility, pinStyle, visibleKindPins, type KindLayer, type LayerVisibility,
 } from "@/features/maps/base-map/layers";
 import { comparablePinCardHtml, formatMoney, pinFeatures, pinPriceLine, valuationPinCardHtml } from "@/features/maps/base-map/pin-card";
 import { RADIUS_METERS, RADIUS_MAX_HITS, clampRadius, formatDistance, radiusSummary } from "@/features/maps/base-map/radius";
@@ -189,9 +190,27 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
     partsRef.current?.map.setOptions({ draggableCursor: picking ? "crosshair" : undefined });
   }, [picking, mode]);
 
-  const shown = useMemo(() => visiblePins(data?.pins ?? [], layers), [data, layers]);
+  // The kinds taken off the map, by layer (market and kind); a market off takes all its kinds off.
+  const [hiddenKinds, setHiddenKinds] = useState<ReadonlySet<string>>(() => new Set());
+  const kindLayers = useMemo(() => kindLayersOf(data?.pins ?? []), [data]);
+  const isKindShown = (layer: KindLayer) => layers[layer.type] && !hiddenKinds.has(layer.key);
+  const showKind = (layer: KindLayer, on: boolean) => {
+    if (on && !layers[layer.type]) {
+      // Its market was off: only this kind of it comes on.
+      setLayers((current) => ({ ...current, [layer.type]: true }));
+      setHiddenKinds((current) => new Set([...current, ...kindLayers.filter((item) => item.type === layer.type && item.key !== layer.key).map((item) => item.key)].filter((key) => key !== layer.key)));
+      return;
+    }
+    setHiddenKinds((current) => {
+      const next = new Set(current);
+      if (on) next.delete(layer.key);
+      else next.add(layer.key);
+      return next;
+    });
+  };
+  const shown = useMemo(() => visibleKindPins(data?.pins ?? [], layers, hiddenKinds), [data, layers, hiddenKinds]);
   // V7.3-15: the list of the radius obeys the layers too, as the pins do.
-  const shownHits = useMemo(() => (hits ? visiblePins(hits, layers) : null), [hits, layers]);
+  const shownHits = useMemo(() => (hits ? visibleKindPins(hits, layers, hiddenKinds) : null), [hits, layers, hiddenKinds]);
   const counts = useMemo(() => countByLayer(data?.pins ?? []), [data]);
 
   // The first pins frame the map; afterwards the appraiser keeps the view.
@@ -507,16 +526,28 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
           <TabsContent value="comparables" className="grid gap-3.5 pt-3">
             <div className="grid gap-1">
               <span className="text-xs font-semibold text-muted-foreground">Capas</span>
-              <div className="overflow-hidden rounded-lg border">
-                {BASE_MAP_LAYERS.map((layer) => (
-                  <label key={layer.type} className="grid cursor-pointer grid-cols-[auto_auto_1fr_auto] items-center gap-2 border-t px-2.5 py-1.5 text-[13px] first:border-t-0">
-                    <Checkbox checked={layers[layer.type]} onCheckedChange={(on) => setLayers((current) => ({ ...current, [layer.type]: on === true }))} />
-                    <Dot color={layer.color} />
-                    <span>{layer.title}</span>
-                    <span className="font-mono text-xs text-muted-foreground">{counts[layer.type].toLocaleString("es-MX")}</span>
-                  </label>
+              {/* By kind and operation, only those with comparables, in a list that opens (video 8.12, 16:20). */}
+              <Popover>
+                <PopoverTrigger render={<Button type="button" variant="outline" size="sm" className="justify-between" data-map-layers="" />}>
+                  <span>{kindLayers.length ? `${kindLayers.filter(isKindShown).length} de ${kindLayers.length} capas a la vista` : "Sin comparables con ubicación"}</span>
+                  <ChevronDown data-icon="inline-end" />
+                </PopoverTrigger>
+                <PopoverContent align="start" className="grid max-h-80 w-80 gap-0 overflow-y-auto p-0">
+                  {kindLayers.map((layer) => (
+                    <label key={layer.key} className="grid cursor-pointer grid-cols-[auto_auto_1fr_auto] items-center gap-2 border-t px-2.5 py-1.5 text-[13px] first:border-t-0" data-map-layer={layer.key}>
+                      <Checkbox checked={isKindShown(layer)} onCheckedChange={(on) => showKind(layer, on === true)} />
+                      <Dot color={layer.color} />
+                      <span>{layer.title}</span>
+                      <span className="font-mono text-xs text-muted-foreground">{layer.count.toLocaleString("es-MX")}</span>
+                    </label>
+                  ))}
+                </PopoverContent>
+              </Popover>
+              <span className="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+                {BASE_MAP_LAYERS.filter((layer) => counts[layer.type]).map((layer) => (
+                  <span key={layer.type} className="inline-flex items-center gap-1"><Dot color={layer.color} /> {layer.title}</span>
                 ))}
-              </div>
+              </span>
               {data ? (
                 <p className="text-xs text-muted-foreground">
                   {data.located.toLocaleString("es-MX")} con ubicación

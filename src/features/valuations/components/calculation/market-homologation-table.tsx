@@ -3,7 +3,6 @@
 import { AlertTriangle } from "lucide-react";
 import { Fragment } from "react";
 
-import { Checkbox } from "@/components/ui/checkbox";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import type { MarketApproachResult } from "@/features/valuations/engine/market";
 import {
@@ -23,7 +22,6 @@ import {
   type ComparableDto,
   type FactorSlotConfig,
 } from "@/features/valuations/calculation/market-types";
-import { cn } from "@/lib/utils";
 import { CaptureSlot } from "../editor/capture-host";
 import { CommitCell } from "./commit-cell";
 
@@ -52,9 +50,6 @@ export function MarketHomologationCapture(props: {
   readOnly: boolean;
   /** The homologation table of the page: its id, the row of each comparable and the column of each factor. */
   at: { table: string; rows: string[]; factor: (slotIndex: number) => string };
-  /** The note under the table: whether it prints, the appraiser's text (null: the format's) and the format's. */
-  note: { show: boolean; text: string | null; defaultText: string };
-  onNote: (note: { showHomologationNote: boolean; homologationNote: string | null }) => void;
   /** A change of the comparable's factors (and their formulas), applied to what the server holds of it. */
   onFactors: (comparable: ComparableDto, change: (current: ComparableDto) => ComparableDto) => void;
   onInvalid: (message: string) => void;
@@ -189,41 +184,6 @@ export function MarketHomologationCapture(props: {
           </Fragment>
         );
       })}
-      {/* Under the table of the dictamen, its note; while that table is not on screen, here. */}
-      <CaptureSlot at={{ table: props.at.table, part: "footer" }} fallback>
-        <HomologationNote note={props.note} readOnly={readOnly} onChange={props.onNote} />
-      </CaptureSlot>
     </>
-  );
-}
-
-/**
- * The note the dictamen prints under the homologation: on by default with the
- * format's sentence; the appraiser may write another or leave it out.
- */
-function HomologationNote({ note, readOnly, onChange }: {
-  note: { show: boolean; text: string | null; defaultText: string };
-  readOnly: boolean;
-  onChange: (note: { showHomologationNote: boolean; homologationNote: string | null }) => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <label className="flex shrink-0 items-center gap-1.5 text-xs">
-        <Checkbox
-          checked={note.show}
-          disabled={readOnly}
-          onCheckedChange={(checked) => onChange({ showHomologationNote: checked === true, homologationNote: note.text })}
-        />
-        Mostrar nota
-      </label>
-      <CommitCell
-        ariaLabel="Nota de la homologación"
-        value={note.text ?? ""}
-        placeholder={note.defaultText}
-        disabled={readOnly || !note.show}
-        onCommit={(text) => onChange({ showHomologationNote: note.show, homologationNote: text.trim() || null })}
-        className={cn("min-w-60 flex-1 border-input text-xs", !note.show && "text-muted-foreground line-through")}
-      />
-    </div>
   );
 }

@@ -2,9 +2,9 @@
 
 import { ConceptCreationControl } from "../editor/concept-creation-control";
 import { toast } from "sonner";
-import { isGeneratedBlock } from "@/features/valuations/calculation/market-document";
+import { isGeneratedBlock, isRenamableGeneratedTitle } from "@/features/valuations/calculation/market-document";
 import { captureDisplayBlocks, templateStripSpaceSection } from "@/features/valuations/calculation/capture-display";
-import { CaptureStore, CaptureStoreProvider, useCapturePages } from "../editor/capture-host";
+import { CaptureSlotTarget, CaptureStore, CaptureStoreProvider, SECTION_TOP_SLOT, useCapturePages } from "../editor/capture-host";
 import { COMPARABLE_TYPE_LABELS } from "@/features/valuations/calculation/market-types";
 import { MARKET_ACCENT } from "@/features/valuations/components/calculation/market-accent";
 import { generatedMarketOf, shownForActiveMarket, type ActiveMarket } from "@/features/valuations/components/workspace/model/active-market";
@@ -62,8 +62,7 @@ import { ThirdPartyDataNotice } from "../legal-notice";
 import { ValuationSettingsPanel } from "../editor/valuation-settings-panel";
 import { ReportInclusionBadge, SectionDocumentSettings } from "../editor/section-document-settings";
 import { SignaturesEditor } from "../editor/signatures-editor";
-import { GeneratedTableEditor } from "../editor/generated-table-editor";
-import { GeneratedBlockTables, PENDING_TABLE_NOTICE } from "../editor/generated-block-tables";
+import { GeneratedBlockTables } from "../editor/generated-block-tables";
 import { GeneratedConcepts } from "../editor/generated-concepts";
 
 import { Check, Eye, EyeOff, GripVertical, PencilLine, Plus, Trash2, X } from "lucide-react";
@@ -244,7 +243,6 @@ export function ValuationEditorPanel(props: {
   onAddApartado: (sectionId: string, blockId: string) => void;
   onAddSubConcept: (sectionId: string, blockId: string, apartadoId: string, type?: ConceptCreationKind) => void;
   onAddTable: (sectionId: string, blockId: string, apartadoId?: string) => void;
-  onAddHomologationTable: (sectionId: string, blockId: string, apartadoId?: string) => void;
   onAddTableColumn: (sectionId: string, blockId: string, tableId: string, apartadoId?: string) => void;
   onAddTableRow: (sectionId: string, blockId: string, tableId: string, apartadoId?: string) => void;
   onBlockDragEnd: (sectionId: string, event: DragEndEvent) => void;
@@ -431,7 +429,6 @@ export function ValuationEditorPanel(props: {
       onAddApartado={props.onAddApartado}
       onAddSubConcept={props.onAddSubConcept}
       onAddTable={props.onAddTable}
-      onAddHomologationTable={props.onAddHomologationTable}
       onAddTableColumn={props.onAddTableColumn}
       onAddTableRow={props.onAddTableRow}
       onDuplicateConcepts={props.onDuplicateConcepts}
@@ -524,6 +521,8 @@ export function ValuationEditorPanel(props: {
         )}
         {/* Matrix 1.4: where the solicitante and the propietario are captured, once per tab (a template has no third parties). */}
         {props.valuationId && (isCaratula || isDatosGenerales) ? <ThirdPartyDataNotice /> : null}
+        {/* Where the appraiser is (a market's «Estás en»), in sight over the whole section while it scrolls (video 8.7). */}
+        <CaptureSlotTarget address={{ table: SECTION_TOP_SLOT, part: "before" }} className="sticky top-0 z-20 empty:hidden" />
         {/* The calculation panels save on their own: Ctrl+Z in their fields is the browser's (or the panel's) own. */}
         {props.calculationPanel ? <div data-native-undo="">{props.calculationPanel}</div> : null}
         {isCaratula && props.caratula && props.meta && props.onUpdateCaratula && props.onUpdateMeta ? (
@@ -660,7 +659,6 @@ function SortableBlockEditor(props: {
   onAddApartado: (sectionId: string, blockId: string) => void;
   onAddSubConcept: (sectionId: string, blockId: string, apartadoId: string, type?: ConceptCreationKind) => void;
   onAddTable: (sectionId: string, blockId: string, apartadoId?: string) => void;
-  onAddHomologationTable: (sectionId: string, blockId: string, apartadoId?: string) => void;
   onAddTableColumn: (sectionId: string, blockId: string, tableId: string, apartadoId?: string) => void;
   onAddTableRow: (sectionId: string, blockId: string, tableId: string, apartadoId?: string) => void;
   onDuplicateConcepts: (sectionId: string, blockId: string, conceptIds: string[], apartadoId?: string) => void;
@@ -817,9 +815,6 @@ function SortableBlockEditor(props: {
         }
         onAddTable={() =>
           props.onAddTable(section.id, block.id)
-        }
-        onAddHomologationTable={() =>
-          props.onAddHomologationTable(section.id, block.id)
         }
         subBlockLabel={subBlockButtonLabel}
       />
@@ -1104,9 +1099,6 @@ function SortableBlockEditor(props: {
                         onAddTable={() =>
                           props.onAddTable(section.id, block.id, subBlock.id)
                         }
-                        onAddHomologationTable={() =>
-                          props.onAddHomologationTable(section.id, block.id, subBlock.id)
-                        }
                       />
                   }
                   onApplySpacing={(conceptIds, field, lines) => props.onUpdateConcepts(section.id, block.id, conceptIds, { [field]: lines }, subBlock.id)}
@@ -1249,15 +1241,15 @@ function GeneratedBlockEditor({
   onRemoveTable: (tableId: string) => void;
 }) {
   // The block's own tables are laid out as they print (GeneratedBlockTables); a subbloque's, one after another.
-  const tables = block.apartados
-    .flatMap((apartado) => apartado.tables.map((table) => ({ table, apartadoId: apartado.id as string | undefined, apartadoTitle: apartado.title as string | undefined })))
-    .filter(({ table }) => !ensureTableV2(table).schema?.plain);
+  const tables = block.apartados.flatMap((apartado) => apartado.tables.map((table) => ({ table, apartadoId: apartado.id })));
   // A block the dictamen does not have yet is only captured in: hiding, moving and formatting it come with its first result.
   const pending = Boolean(capture?.pending);
   const readOnly = sectionReadOnly || pending;
   const toolbar = blockToolbarState({ kind: "generated", readOnly });
   const locks = blockToolbarLocks(toolbar);
   const market = generatedMarketOf(block);
+  // A market's approach page is renamed as any block once the dictamen has it.
+  const renamable = market?.kind === "mercado" && isRenamableGeneratedTitle(block.id) && !pending;
   // Hiding a market's page takes it out of the dictamen though the market is in the report: it says so, with «Deshacer» (V7.4-07).
   const setVisible = (enabled: boolean) => {
     onUpdateBlock({ enabled });
@@ -1281,7 +1273,8 @@ function GeneratedBlockEditor({
       cardRef={setNodeRef}
       style={{ transform: CSS.Transform.toString(transform), transition }}
       className={cn("rounded-xl border border-dashed bg-muted/20", market && cn("border-l-4", MARKET_ACCENT[market.type].border), !block.enabled && "opacity-65")}
-      badge={pending ? "Aún no se imprime" : block.enabled ? (block.sectionLabel ? `${block.sectionLabel.replace(/\.+$/, "")}.` : titlePrints(block) ? "Fijo" : "Sin título") : "Oculto"}
+      /* Its chapter number, as any block (video 8.7: «¿cómo sé que este es el bloque 10?»): the dictamen's, or the section's while it does not print yet. */
+      badge={pending ? `${section.label ? `${section.label}. ` : ""}Aún no se imprime` : block.enabled ? (block.sectionLabel ? `${block.sectionLabel.replace(/\.+$/, "")}.` : titlePrints(block) ? "Fijo" : "Sin título") : "Oculto"}
       dragHandle={
         <Button type="button" size="icon-sm" variant="ghost" aria-label={`Mover ${block.title}`} title="Arrastrar para reordenar" disabled={readOnly} {...attributes} {...listeners}>
           <GripVertical />
@@ -1306,15 +1299,22 @@ function GeneratedBlockEditor({
           label="el bloque"
           name={stripLeadingRomanNumeral(block.title)}
           titleRef={titleRef}
-          canRename={false}
+          canRename={renamable}
           lock={toolbar.transfer.reason}
-          hints={{ rename: GENERATED_BLOCK_TITLE_REASON, delete: locks.delete }}
+          hints={{ ...(renamable ? {} : { rename: GENERATED_BLOCK_TITLE_REASON }), delete: locks.delete }}
           visibility={visibility}
           pageBreak={pageBreak}
           printTitle={printTitle}
         />
       ) : undefined}
       title={stripLeadingRomanNumeral(block.title)}
+      /* The name of a market's approach is the appraiser's, as any block's (video 8.7), never after intangibles; the calculation keeps it. */
+      titleEdit={renamable ? {
+        disabled: readOnly,
+        value: stripLeadingRomanNumeral(block.title),
+        onChange: (title) => onUpdateBlock({ title }),
+        refusal: conclusiveLabelRefusal,
+      } : undefined}
       structuralActions={{
         conceptPresentation: block.conceptPresentation,
         disabled: readOnly,
@@ -1374,21 +1374,25 @@ function GeneratedBlockEditor({
           onRemoveTable={onRemoveTable}
         />
       ) : null}
-      {block.enabled || capture ? tables.map(({ table, apartadoId, apartadoTitle }, index) => (
-        <div key={table.id} className="grid min-w-0 gap-1.5">
-          {/* The apartado's title over its first table, as the dictamen prints it. */}
-          {apartadoTitle && tables[index - 1]?.apartadoId !== apartadoId ? <h4 className="text-xs font-semibold uppercase text-muted-foreground">{apartadoTitle}</h4> : null}
-          <GeneratedTableEditor
-            table={table}
-            readOnly={sectionReadOnly}
+      {block.enabled || capture ? block.apartados.filter((apartado) => tables.some((item) => item.apartadoId === apartado.id)).map((apartado) => (
+        <div key={apartado.id} className="grid min-w-0 gap-1.5" data-generated-apartado={apartado.id}>
+          {/* The apartado's title over its tables, as the dictamen prints it. */}
+          {apartado.title ? <h4 className="text-sm font-semibold uppercase text-foreground/80">{apartado.title}</h4> : null}
+          {/* A plain grid (the offer level) is not a table to edit: only the place of what its calculation sets for it. */}
+          {capture ? apartado.tables.filter((table) => ensureTableV2(table).schema?.plain).map((table) => (
+            <CaptureSlotTarget key={table.id} address={{ table: table.id, part: "before" }} className="grid min-w-0 gap-2 empty:hidden" />
+          )) : null}
+          {/* Its tables arranged as any block's: dragged to another row or beside another (#172), each with what its capture sets above it. */}
+          <GeneratedBlockTables
+            block={{ ...block, tables: apartado.tables, contentLayout: apartado.contentLayout, apartados: [] }}
             capture={Boolean(capture)}
-            onUpdate={(updater) => {
-              if (pending) {
-                toast.info(PENDING_TABLE_NOTICE.title, { id: "capture-pending-table", description: PENDING_TABLE_NOTICE.description });
-                return;
-              }
-              onUpdateTable(table.id, updater, apartadoId);
-            }}
+            pending={pending}
+            readOnly={sectionReadOnly}
+            onLayoutChange={(contentLayout) => onUpdateBlock({ apartados: block.apartados.map((item) => (item.id === apartado.id ? { ...item, contentLayout } : item)) })}
+            onUpdateTable={(tableId, updater) => onUpdateTable(tableId, updater, apartado.id)}
+            onAddTableColumn={onAddTableColumn}
+            onAddTableRow={onAddTableRow}
+            onRemoveTable={onRemoveTable}
           />
         </div>
       )) : null}

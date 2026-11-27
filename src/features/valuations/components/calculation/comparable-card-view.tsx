@@ -133,7 +133,7 @@ export function ComparableCardView({ card, printable = false, map, machinery: ma
     { label: "Fuente o portal", value: orDash(comparable.sourceName) },
     // Printed without them (the memoria leaves them out unless the appraiser includes them), the rows go too.
     ...(printable && !comparable.contactName && !comparable.contactPhone ? [] : [
-      { label: "Anunciante", value: orDash(comparable.contactName) },
+      { label: "Contacto", value: orDash(comparable.contactName) },
       { label: "Teléfono", value: orDash(comparable.contactPhone) },
     ]),
     { label: "Fecha de consulta", value: dayText(comparable.consultedOn) },
@@ -153,7 +153,7 @@ export function ComparableCardView({ card, printable = false, map, machinery: ma
       return { label, value: value === null || value === undefined || value === "" ? "—" : String(value) };
     }),
     { label: "Pavimento / acceso", value: orDash(comparable.propertyDetails?.paving) },
-    { label: "Posición en manzana", value: orDash(comparable.propertyDetails?.blockPosition) },
+    { label: "Ubicación en manzana", value: orDash(comparable.propertyDetails?.blockPosition) },
   ];
   const machine: SheetItem[] = machinery ? (vehicle ? vehicleCardRows : machineryCardRows)(comparable.machinery).map((row) => ({ label: row.label, value: row.value })) : [];
   const construction: SheetItem[] = built && !machinery ? [

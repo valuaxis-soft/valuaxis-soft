@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { marketDocumentBlocks } from "../src/features/valuations/calculation/market-document";
 import {
@@ -74,33 +75,23 @@ test("the document's number format in the capture: separator or not", () => {
   assert.equal(characteristicNumberText("", true), "");
 });
 
-test("«Homologar» off: no factor applies, the statistics are those of the offers, the ±30 % range stays and the table does not print", () => {
+test("V8.10 (03:25, «homologar siempre homologa»): a capture saved with «Homologar» off homologates again with the factors it kept", () => {
   const off: MarketCalculationDto = { ...calculation, settings: { ...calculation.settings, homologate: false } };
-  assert.equal(homologatesOf(calculation.settings), true);
-  assert.equal(homologatesOf(off.settings), false);
-  assert.equal(printsHomologationTable(off.settings), false);
-  assert.equal(printsHomologationTable({ homologate: true, showHomologationTable: false }), false);
-  const input = toMarketEngineInput(off);
-  assert.ok(input.ok);
-  assert.deepEqual(input.input.comparables.map((row) => row.factors), [[], [], [], []]);
-  assert.deepEqual(input.input.comparables.map((row) => row.surfaceFactor), [1, 1, 1, 1]);
-  const result = computeMarketApproach(input.input, DEFAULT_ENGINE_CONFIG);
-  const offers = off.comparables.map((row) => (row.price as number) / (row.area as number));
-  assert.deepEqual(result.homologation.comparables.map((row) => row.homologatedUnitValue), offers);
-  assert.ok(Math.abs(result.homologation.stats.mean - offers.reduce((a, b) => a + b, 0) / 4) < 1e-9);
-  assert.ok(result.adoptedLimits.min < result.homologation.stats.mean && result.adoptedLimits.max > result.homologation.stats.mean);
-  // Typed outside ±30 % it is still refused.
-  const outside = toMarketEngineInput({ ...off, settings: { ...off.settings, adoptedUnitValue: 20_000 } });
-  assert.ok(outside.ok);
-  assert.equal(computeMarketApproach(outside.input, DEFAULT_ENGINE_CONFIG).adoptedOutsideLimits, true);
-  // With homologation the negotiation factor applies.
+  assert.equal(homologatesOf(off.settings), true);
+  assert.deepEqual(toMarketEngineInput(off), toMarketEngineInput(calculation), "the same input as with it on");
   const on = toMarketEngineInput(calculation);
   assert.ok(on.ok);
-  assert.ok(Math.abs(computeMarketApproach(on.input, DEFAULT_ENGINE_CONFIG).homologation.comparables[0].homologatedUnitValue - offers[0] * 0.95) < 1e-6);
-  // The dictamen: the offers table carries the boxes, no homologation apartado.
-  const [block] = marketDocumentBlocks(off, result);
-  assert.deepEqual(block.apartados.map((apartado) => apartado.title), ["DATOS DE COMPARABLES (TERRENOS)"]);
-  assert.equal(marketSettingsSchema.safeParse({ ...off.settings, factorSlots: off.settings.factorSlots }).success, true);
+  const offers = off.comparables.map((row) => (row.price as number) / (row.area as number));
+  assert.ok(Math.abs(computeMarketApproach(on.input, DEFAULT_ENGINE_CONFIG).homologation.comparables[0].homologatedUnitValue - offers[0] * 0.95) < 1e-6, "the negotiation factor applies");
+  // The table of homologation prints unless the appraiser leaves it out of the dictamen.
+  assert.equal(printsHomologationTable(off.settings), true);
+  assert.equal(printsHomologationTable({ homologate: true, showHomologationTable: false }), false);
+  const [block] = marketDocumentBlocks(off, computeMarketApproach(on.input, DEFAULT_ENGINE_CONFIG));
+  assert.deepEqual(block.apartados.map((apartado) => apartado.title), ["DATOS DE COMPARABLES (TERRENOS)", "HOMOLOGACIÓN (TERRENOS)"]);
+  // No «Homologar» box in the panel.
+  const panel = readFileSync("src/features/valuations/components/calculation/market-calculation-panel.tsx", "utf8");
+  assert.doesNotMatch(panel, /aria-label="Homologar"/);
+  assert.doesNotMatch(panel, /<MarketFactorSlots/);
 });
 
 test("the undo snapshot restores the comparables whose capture changed, by id", () => {

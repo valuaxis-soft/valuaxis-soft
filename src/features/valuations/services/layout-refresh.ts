@@ -20,10 +20,13 @@
  * with the next version and the date it ships.
  */
 import { CONCLUSION_KEYS, conceptCalculationKey, isSummaryConcept } from "../calculation/conclusion-document";
-import type { AppSection, Block, Concept } from "../model";
+import { applyTableLayout, layoutOf, sourceOf } from "../calculation/generated-table-layout";
+import { DEFAULT_HOMOLOGATION_NOTE } from "../calculation/market-document";
+import type { AppSection, Block, Concept, TableContent } from "../model";
 import { conclusionesSection } from "../sections/conclusiones";
 import { getCanonicalSectionKey } from "../sections/section-registry";
 import { contentLayoutWithOwnRowFor } from "./content-layout";
+import { ensureTableV2, type TableV2 } from "./table";
 
 /**
  * Who gets a step without asking: `all` (the tuning phase) every valuation
@@ -41,7 +44,9 @@ export function layoutRefreshPolicy(value: string | undefined | null): LayoutRef
 export type LayoutChange =
   | { step: string; kind: "concept-added"; sectionId: string; blockId: string; conceptId: string; label: string }
   | { step: string; kind: "concept-keyed"; sectionId: string; blockId: string; conceptId: string; calculationKey: string }
-  | { step: string; kind: "block-added"; sectionId: string; blockId: string; title: string };
+  | { step: string; kind: "block-added"; sectionId: string; blockId: string; title: string }
+  /** A table as it was before the step changed it (by id, in its block or subbloque): «Deshacer» puts it back. */
+  | { step: string; kind: "table-changed"; sectionId: string; blockId: string; tableId: string; previous: TableContent };
 
 type LayoutStep = {
   version: number;
@@ -169,6 +174,71 @@ function conclusionValueStep(sections: AppSection[]): { sections: AppSection[]; 
   return { sections: next, changes };
 }
 
+/** The market pages the calculation writes: their tables auto-fit their columns once the widths given before are dropped. */
+const isMarketPage = (block: Block) => /^motor-mercado-.+-enfoque/i.test(block.id);
+
+/** A table of the appraiser's made with «Tabla Homologación» as any table: its double header, columns, rows and notes stay. */
+function asPlainTable(table: TableContent): TableContent | null {
+  const v2 = ensureTableV2(table);
+  if (v2.schema?.presetId !== "homologation") return null;
+  const { presetId: _preset, ...schema } = v2.schema;
+  const notes = schema.notes ?? [];
+  const converted: TableV2 = {
+    ...v2,
+    schema: {
+      ...schema,
+      // Its factors' zone takes and gives columns as any double header.
+      zones: schema.zones.map((zone) => ({ id: zone.id, kind: "fixed" as const, columnIds: zone.columnIds })),
+      // The note of the format, under it, as the market's homologation prints it (video 8.12, 13:50).
+      ...(notes.some((note) => note.text.trim() === DEFAULT_HOMOLOGATION_NOTE) ? {} : { notes: [...notes, { position: "table" as const, text: DEFAULT_HOMOLOGATION_NOTE }] }),
+    },
+  };
+  return converted as unknown as TableContent;
+}
+
+/** The widths given by hand dropped from a market table's layout: its columns fit what they hold. */
+function withAutoFitColumns(table: TableContent): TableContent | null {
+  const layout = layoutOf(table);
+  if (!layout.widths || !Object.keys(layout.widths).length) return null;
+  const { widths: _widths, ...rest } = layout;
+  return applyTableLayout(sourceOf(table), rest);
+}
+
+/**
+ * The market sections as the appraiser's Excel (video 8.10 and 8.12, 26 Nov
+ * 2026): every table is an ordinary table. A «Tabla Homologación» made
+ * before is a table like the others (its double header of factors, its
+ * columns and rows stay; it takes the note of the format under it), and the
+ * market's tables drop the widths they were given, so each column fits what
+ * it holds (the factors narrow) and the table fits the page.
+ */
+function marketTablesStep(sections: AppSection[]): { sections: AppSection[]; changes: LayoutChange[] } {
+  const step = "market-tables";
+  const changes: LayoutChange[] = [];
+  const next = sections.map((section) => {
+    if (section.removed) return section;
+    let touched = false;
+    const blocks = section.blocks.map((block) => {
+      const change = (table: TableContent) => {
+        const replaced = asPlainTable(table) ?? (isMarketPage(block) ? withAutoFitColumns(table) : null);
+        if (!replaced) return table;
+        changes.push({ step, kind: "table-changed", sectionId: section.id, blockId: block.id, tableId: table.id, previous: table });
+        touched = true;
+        return replaced;
+      };
+      const tables = block.tables.map(change);
+      const apartados = block.apartados.map((apartado) => {
+        const own = apartado.tables.map(change);
+        return own.some((table, index) => table !== apartado.tables[index]) ? { ...apartado, tables: own } : apartado;
+      });
+      const same = tables.every((table, index) => table === block.tables[index]) && apartados.every((apartado, index) => apartado === block.apartados[index]);
+      return same ? block : { ...block, tables, apartados };
+    });
+    return touched ? { ...section, blocks } : section;
+  });
+  return { sections: changes.length ? next : sections, changes };
+}
+
 /** The changes of format, oldest first. */
 export const LAYOUT_STEPS: readonly LayoutStep[] = [
   {
@@ -177,6 +247,13 @@ export const LAYOUT_STEPS: readonly LayoutStep[] = [
     since: "2026-11-24",
     description: "La conclusión imprime el resumen de valores, el valor concluido en su recuadro y la cifra en letra.",
     apply: conclusionValueStep,
+  },
+  {
+    version: 2,
+    id: "market-tables",
+    since: "2026-11-26",
+    description: "Las tablas de homologación son tablas como cualquier otra, con su nota, y las columnas de las tablas de mercado se ajustan a su contenido.",
+    apply: marketTablesStep,
   },
 ];
 
@@ -238,11 +315,20 @@ export function revertLayoutRefresh(sections: AppSection[], changes: readonly La
     const { calculationKey: _key, ...rest } = concept;
     return rest;
   };
+  const previousTables = new Map(changes.flatMap((change) => (change.kind === "table-changed" ? [[`${change.blockId}|${change.tableId}`, change.previous] as const] : [])));
+  const untouch = (blockId: string) => (table: TableContent) => previousTables.get(`${blockId}|${table.id}`) ?? table;
   const reverted = sections.map((section) => (!sectionIds.has(section.id) ? section : {
     ...section,
     blocks: section.blocks
       .filter((block) => !addedBlocks.has(block.id))
-      .map((block) => ({ ...block, concepts: block.concepts.filter((concept) => !addedConcepts.has(concept.id)).map(unkey) })),
+      .map((block) => ({
+        ...block,
+        concepts: block.concepts.filter((concept) => !addedConcepts.has(concept.id)).map(unkey),
+        ...(previousTables.size ? {
+          tables: block.tables.map(untouch(block.id)),
+          apartados: block.apartados.map((apartado) => ({ ...apartado, tables: apartado.tables.map(untouch(block.id)) })),
+        } : {}),
+      })),
   }));
   return withLayoutVersion(reverted, LAYOUT_VERSION);
 }

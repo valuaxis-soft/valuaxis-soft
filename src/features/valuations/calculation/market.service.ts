@@ -137,7 +137,7 @@ type StoredConfiguration = Partial<Pick<MarketSettingsDto,
   | "factorSlots" | "adoptedUnitValue" | "rounding" | "offerLevel" | "offerLabels" | "offerMark" | "offerIntro" | "homologationBasis"
   | "typicalFrontage" | "typicalDepth" | "characteristicFields" | "subjectCharacteristics" | "showFactorJustification"
   | "regression" | "showHomologationTable" | "showHomologationNote" | "homologationNote" | "homologate" | "additionalAmountInCalculation"
-  | "showAdditionalAmount" | "printedStatistics">> & {
+  | "showAdditionalAmount" | "printedStatistics" | "fieldLabels" | "linkedColumns">> & {
   /**
    * The lote tipo captured, kept while the homologation is against the
    * subject: NSuperficieBase holds it only against the lote tipo, so the cost
@@ -389,6 +389,8 @@ async function loadCalculation(tx: Tx, versionId: number, type: ComparableType, 
         showHomologationNote: configuration.showHomologationNote ?? true,
         homologationNote: configuration.homologationNote ?? null,
         printedStatistics: configuration.printedStatistics ?? null,
+        fieldLabels: configuration.fieldLabels ?? null,
+        linkedColumns: configuration.linkedColumns ?? null,
         ...(configuration.homologate === undefined ? {} : { homologate: configuration.homologate }),
         ...(configuration.additionalAmountInCalculation === undefined ? {} : { additionalAmountInCalculation: configuration.additionalAmountInCalculation }),
         ...(configuration.showAdditionalAmount === undefined ? {} : { showAdditionalAmount: configuration.showAdditionalAmount }),
@@ -575,6 +577,8 @@ function storedConfiguration(settings: StoredConfiguration) {
     ...(settings.showHomologationNote === undefined ? {} : { showHomologationNote: settings.showHomologationNote }),
     homologationNote: settings.homologationNote ?? null,
     printedStatistics: settings.printedStatistics ?? null,
+    fieldLabels: settings.fieldLabels ?? null,
+    linkedColumns: settings.linkedColumns ?? null,
     ...(settings.homologate === undefined ? {} : { homologate: settings.homologate }),
     ...(settings.additionalAmountInCalculation === undefined ? {} : { additionalAmountInCalculation: settings.additionalAmountInCalculation }),
     // Out of the calculation, the additional amount does not print either.
@@ -692,6 +696,8 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
         showHomologationNote: payload.showHomologationNote ?? stored.showHomologationNote,
         homologationNote: unlessOmitted(payload.homologationNote, stored.homologationNote),
         printedStatistics: unlessOmitted(payload.printedStatistics, stored.printedStatistics),
+        fieldLabels: unlessOmitted(payload.fieldLabels, stored.fieldLabels),
+        linkedColumns: unlessOmitted(payload.linkedColumns, stored.linkedColumns),
         homologate: payload.homologate ?? stored.homologate,
         additionalAmountInCalculation: payload.additionalAmountInCalculation ?? stored.additionalAmountInCalculation,
         showAdditionalAmount: payload.showAdditionalAmount ?? stored.showAdditionalAmount,

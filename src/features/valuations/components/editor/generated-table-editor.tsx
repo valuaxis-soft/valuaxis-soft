@@ -1,11 +1,11 @@
 "use client";
 
-import { Eye, EyeOff, Plus, Trash2 } from "lucide-react";
+import { Check, Eye, EyeOff, Link2, Plus, Trash2, Undo2 } from "lucide-react";
 import { useMemo } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   MAX_EXTRA_BOX_ROWS,
   MAX_EXTRA_COLUMNS,
@@ -14,8 +14,12 @@ import {
   layoutOf,
   sourceOf,
   summaryCaptionKey,
+  summaryRowKey,
+  tableNotesOf,
   withBoxLabel,
   withBoxRows,
+  withColumnRestored,
+  withTableNotes,
   applyTableLayout,
   type ArrangedBoxRow,
 } from "@/features/valuations/calculation/generated-table-layout";
@@ -33,8 +37,38 @@ import { cn } from "@/lib/utils";
 import { CommitCell } from "../calculation/commit-cell";
 import { SortableRows, useSortableRow } from "../calculation/sortable-rows";
 import { CALCULATED_CELL_HINT, CalculatedTableProvider, type CalculatedTableLock } from "./calculated-table-context";
-import { CaptureSlotTarget, useCaptureDeclared, useCaptureStore } from "./capture-host";
+import { CaptureSlotTarget, useCaptureColumnsOf, useCaptureDeclared, useCaptureStore } from "./capture-host";
 import { TableEditorItem } from "./table-editor";
+import { TableNotesEditor } from "./table-notes-editor";
+
+/**
+ * «Agregar columna → Dato de la ficha» (video 8.9, 01:51: «si agregan una
+ * columna, ligarlo a algún dato de las fichas»): every datum of the
+ * comparables' card; the ones already in the table are checked, and choosing
+ * one again takes it out.
+ */
+function CardFieldColumnMenu(props: { fields: Array<{ key: string; label: string; linked: boolean }>; onLink: (key: string) => void }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger render={<Button type="button" size="sm" variant="outline" className="h-7 text-xs" data-card-field-menu="" />}>
+        <Link2 data-icon="inline-start" /> Columna con un dato de la ficha
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="max-h-80 w-72 overflow-y-auto">
+        <DropdownMenuGroup>
+        <DropdownMenuLabel className="text-xs font-normal text-muted-foreground">
+          La columna muestra el dato de cada comparable; su nombre es el de la ficha y cambia en las dos partes.
+        </DropdownMenuLabel>
+        {props.fields.map((field) => (
+          <DropdownMenuItem key={field.key} onClick={() => props.onLink(field.key)} data-card-field={field.key}>
+            <Check className={cn("size-3.5", field.linked ? "opacity-100" : "opacity-0")} aria-hidden />
+            {field.label}
+          </DropdownMenuItem>
+        ))}
+        </DropdownMenuGroup>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
 
 const asContent = (table: TableV2) => ({ ...table, version: 2 }) as unknown as TableContent;
 
@@ -55,27 +89,60 @@ export function GeneratedTableEditor(props: {
   onUpdate: (updater: (table: TableContent) => TableContent) => void;
 }) {
   const source = useMemo(() => sourceOf(props.table), [props.table]);
+  // Who names, takes out and adds the calculation's columns of this table (the market's panel), if anyone.
+  const managed = useCaptureColumnsOf(source.id);
   const lock = useMemo<CalculatedTableLock>(() => {
     const rows = new Set(source.rows.map((row) => row.id));
     const columns = new Set(source.columns.map((column) => column.id));
     const places = new Map(source.columns.map((column, index) => [column.id, index]));
-    return { row: (id) => rows.has(id), column: (id) => columns.has(id), ...(props.capture ? { inPlace: true, columnPlace: (id: string) => places.get(id) ?? -1 } : {}) };
-  }, [source, props.capture]);
+    return {
+      row: (id) => rows.has(id),
+      column: (id) => columns.has(id),
+      ...(props.capture ? { inPlace: true, columnPlace: (id: string) => places.get(id) ?? -1 } : {}),
+      ...(managed?.removable ? { removable: managed.removable } : {}),
+    };
+  }, [source, props.capture, managed]);
   const captureStore = useCaptureStore();
   const edit = (change: (table: TableContent) => TableContent) => props.onUpdate((current) => {
     const next = editGeneratedTable(current, change);
-    // A header whose name is the calculation's (a factor of the homologation): the calculation takes the new name
-    // and prints it everywhere (the annex, the memory), and the table keeps no label of its own over it.
+    // What the calculation owns of the columns: their names (a factor, a datum of the card), the ones taken out
+    // and the ones added among the factors. The calculation takes the change and writes it everywhere it prints
+    // (the cards, the annex, the memory); the table keeps no label, hidden column or column of its own over it.
     const naming = captureStore?.headerRename(source.id);
     if (!naming) return next;
-    const before = layoutOf(current).labels ?? {};
-    const after = layoutOf(next).labels ?? {};
-    const taken = Object.keys(after).filter((id) => after[id] !== before[id] && after[id].trim() && naming.handles(id));
-    if (!taken.length) return next;
+    const layout = layoutOf(next);
+    const before = layoutOf(current);
+    const after = layout.labels ?? {};
+    const taken = Object.keys(after).filter((id) => after[id] !== before.labels?.[id] && after[id].trim() && naming.handles(id));
+    const removedNow = (layout.removed ?? []).filter((id) => !(before.removed ?? []).includes(id));
+    const takenOut = removedNow.filter((id) => naming.takesRemoval?.(id));
+    const addedNow = (layout.extraColumns ?? []).filter((column) => !(before.extraColumns ?? []).some((item) => item.id === column.id));
+    const adopted = addedNow.filter((column) => naming.takesInsert?.(column.after));
+    if (!taken.length && !takenOut.length && !adopted.length) return next;
+    // Told after the table's update, once: the calculation writes the table again with the change.
     for (const id of taken) queueMicrotask(() => naming.rename(id, after[id].trim()));
+    for (const id of takenOut) queueMicrotask(() => naming.remove?.(id));
+    for (const column of adopted) queueMicrotask(() => naming.insert?.(column.after, column.name, column.id));
     const labels = Object.fromEntries(Object.entries(after).filter(([id]) => !taken.includes(id)));
-    return applyTableLayout(sourceOf(next), { ...layoutOf(next), labels });
+    const removed = (layout.removed ?? []).filter((id) => !takenOut.includes(id));
+    const extraColumns = (layout.extraColumns ?? []).filter((column) => !adopted.includes(column));
+    // A factor added or taken out moves the calculation's columns after it: the order the table had before stays.
+    const order = adopted.length || takenOut.length ? before.order : layout.order;
+    const { removed: _removed, extraColumns: _extra, order: _order, ...rest } = layout;
+    return applyTableLayout(sourceOf(next), {
+      ...rest,
+      labels,
+      ...(removed.length ? { removed } : {}),
+      ...(extraColumns.length ? { extraColumns } : {}),
+      ...(order?.length ? { order } : {}),
+    });
   });
+  const restoreColumn = (columnId: string) => props.onUpdate((current) => applyTableLayout(sourceOf(current), withColumnRestored(layoutOf(current), columnId)));
+  const removedColumns = (layoutOf(props.table).removed ?? []).flatMap((id) => {
+    const column = source.columns.find((item) => item.id === id);
+    return column ? [{ id, name: layoutOf(props.table).labels?.[id] ?? column.name }] : [];
+  });
+  const notes = tableNotesOf(source, layoutOf(props.table));
   const addColumn = () => {
     if ((layoutOf(props.table).extraColumns?.length ?? 0) >= MAX_EXTRA_COLUMNS) {
       toast.info(`Una tabla del cálculo lleva hasta ${MAX_EXTRA_COLUMNS} columnas propias.`);
@@ -91,6 +158,8 @@ export function GeneratedTableEditor(props: {
         className={cn("min-w-0", props.capture && "[&_[data-capture-slot]_input]:bg-background [&_[data-capture-slot]_select]:bg-background [&_[data-capture-slot]_input:disabled]:bg-transparent")}
         data-generated-table={source.id}
       >
+        {/* Right above the table, what its calculation sets for it and does not print (video 8.10: one structure, in the Excel's order). */}
+        {props.capture ? <CaptureSlotTarget address={{ table: source.id, part: "before" }} className="mb-2 grid min-w-0 gap-2 empty:hidden" /> : null}
         <TableEditorItem
           table={props.table}
           readOnly={props.readOnly}
@@ -105,12 +174,31 @@ export function GeneratedTableEditor(props: {
           footer={(
             <>
               {/* Under the grid, what the calculation's capture adds to the table (a row more). */}
-              <CaptureSlotTarget address={{ table: source.id, part: "footer" }} className="mt-2 flex flex-wrap items-center gap-2 empty:hidden" />
-              {/* Its source, as it prints under it («Fuente: tabla de Bravo Armejo…»). */}
-              {source.schema?.notes?.filter((note) => note.small).map((note) => (
-                <p key={note.text} className="mt-2 text-xs italic text-muted-foreground" data-table-source-note="">{note.text}</p>
-              ))}
+              <CaptureSlotTarget address={{ table: source.id, part: "footer" }} className="mt-2 grid gap-2 empty:hidden" />
+              {!props.readOnly && (removedColumns.length || managed?.linkable) ? (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs" data-table-columns-bar="">
+                  {managed?.linkable ? <CardFieldColumnMenu fields={managed.linkable()} onLink={(key) => managed.link?.(key)} /> : null}
+                  {removedColumns.length ? (
+                    <span className="flex flex-wrap items-center gap-1 text-muted-foreground" data-removed-columns="">
+                      Columnas quitadas:
+                      {removedColumns.map((column) => (
+                        <Button key={column.id} type="button" size="sm" variant="ghost" className="h-6 px-1.5 text-xs" title="Volver a mostrar esta columna" onClick={() => restoreColumn(column.id)}>
+                          <Undo2 data-icon="inline-start" /> {column.name}
+                        </Button>
+                      ))}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
+              {/* Its notes, in the size of the text, written in place, added, taken out and moved (video 8.7). */}
+              <TableNotesEditor
+                notes={notes}
+                readOnly={props.readOnly}
+                onChange={(next) => props.onUpdate((current) => applyTableLayout(sourceOf(current), withTableNotes(layoutOf(current), sourceOf(current), next)))}
+              />
               <GeneratedBoxLabels table={props.table} readOnly={props.readOnly} onUpdate={props.onUpdate} />
+              {/* After its notes and boxes, what the calculation's capture adds at the end (a market's values and statistics). */}
+              <CaptureSlotTarget address={{ table: source.id, part: "after" }} className="mt-3 grid gap-3 empty:hidden" />
             </>
           )}
         />
@@ -142,14 +230,19 @@ function BoxValue(props: { table: string; box: string; value: string }) {
 function GeneratedBoxLabels(props: { table: TableContent; readOnly: boolean; onUpdate: (updater: (table: TableContent) => TableContent) => void }) {
   const source = sourceOf(props.table);
   const layout = layoutOf(props.table);
-  const boxes = source.schema?.summaryBoxes ?? [];
+  // The rows a panel edits as a table of its own (the market's statistics) are not repeated here.
+  const managed = useCaptureColumnsOf(source.id);
+  const boxes = (source.schema?.summaryBoxes ?? [])
+    .map((box) => ({ box, rows: box.rows.map((row, index) => ({ row, key: summaryRowKey(box, row, index) })).filter(({ key }) => !managed?.boxRowManaged?.(key)) }))
+    .filter(({ box, rows }) => rows.length || box.caption !== undefined)
+    .map(({ box }) => box);
   if (!boxes.length) return null;
   const change = (next: (current: ReturnType<typeof layoutOf>) => ReturnType<typeof layoutOf>) =>
     props.onUpdate((current) => applyTableLayout(sourceOf(current), next(layoutOf(current))));
   const rename = (key: string, text: string) => change((current) => withBoxLabel(current, key, text));
   return (
-    <div className="mt-3 grid gap-2 border-t pt-3 text-xs" data-generated-table-boxes>
-      <p className="text-muted-foreground">
+    <div className="mt-3 grid gap-2 border-t pt-3 text-sm" data-generated-table-boxes>
+      <p className="text-xs text-muted-foreground">
         Recuadros de la tabla: escribe el nombre con el que se imprime cada renglón (vacío, vuelve el del cálculo); la cifra la escribe el cálculo.
         Arrastra para cambiar el orden, oculta lo que no quieras imprimir o agrega renglones tuyos.
       </p>
@@ -163,6 +256,7 @@ function GeneratedBoxLabels(props: { table: TableContent; readOnly: boolean; onU
             readOnly={props.readOnly}
             onRename={rename}
             onArrange={(arrange) => change((current) => withBoxRows(current, box.id, arrange))}
+            managed={(key) => managed?.boxRowManaged?.(key) ?? false}
           />
         ))}
       </div>
@@ -178,9 +272,11 @@ function BoxRowsEditor(props: {
   readOnly: boolean;
   onRename: (key: string, text: string) => void;
   onArrange: (arrange: (current: GeneratedBoxRows) => GeneratedBoxRows) => void;
+  /** Rows a panel edits as a table of its own (the market's statistics): not repeated here. */
+  managed?: (rowKey: string) => boolean;
 }) {
   const { box, layout } = props;
-  const rows = arrangedBoxRows(box, layout);
+  const rows = arrangedBoxRows(box, layout).filter((item) => !props.managed?.(item.key));
   const keys = rows.map((item) => item.key);
   const extras = layout.boxRows?.[box.id]?.extra ?? [];
   const setExtra = (id: string, patch: Partial<{ label: string; value: string }>) =>
@@ -222,7 +318,7 @@ function BoxRowsEditor(props: {
           ariaLabel={`Etiqueta ${box.caption}`}
           disabled={props.readOnly}
           value={layout.boxLabels?.[summaryCaptionKey(box)] ?? box.caption}
-          className="border-input text-xs font-semibold"
+          className="border-input text-sm font-semibold"
           onCommit={(text) => props.onRename(summaryCaptionKey(box), text === box.caption ? "" : text)}
         />
       ) : null}
@@ -275,7 +371,7 @@ function BoxRowEditor(props: {
         disabled={props.readOnly}
         value={props.label}
         placeholder={item.own ? "Nombre del renglón" : item.row.label}
-        className={cn("border-input text-xs text-foreground", item.row.emphasis && "font-semibold")}
+        className={cn("border-input text-sm text-foreground", item.row.emphasis && "font-semibold")}
         onCommit={props.onLabel}
       />
       {item.own ? (
@@ -284,7 +380,7 @@ function BoxRowEditor(props: {
           disabled={props.readOnly}
           value={item.row.value}
           placeholder="Valor"
-          className="w-28 border-input text-right text-xs"
+          className="w-28 border-input text-right text-sm"
           onCommit={props.onValue}
         />
       ) : <BoxValue table={props.table} box={item.key} value={item.row.value} />}

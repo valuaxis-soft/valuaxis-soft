@@ -10,12 +10,12 @@ import {
 } from "../model/section-content";
 import type { EditorState } from "./use-editor-state";
 
-/** Table edits: add (blank or homologation), update, add column/row, remove. */
+/** Table edits: add, update, add column/row, remove. */
 export function useTableMutations({
   updateSectionBlocks,
 }: Pick<EditorState, "updateSectionBlocks">) {
-  const addTable = (sectionId: string, blockId: string, apartadoId?: string, preset?: "homologation") => {
-    const table = createTable(preset);
+  const addTable = (sectionId: string, blockId: string, apartadoId?: string) => {
+    const table = createTable();
     const added = { type: "table" as const, id: table.id };
     updateSectionBlocks(sectionId, (blocks) =>
       blocks.map((block) => {
@@ -34,9 +34,6 @@ export function useTableMutations({
     );
   };
 
-  const addHomologationTable = (sectionId: string, blockId: string, apartadoId?: string) => {
-    addTable(sectionId, blockId, apartadoId, "homologation");
-  };
 
   const updateTable = (
     sectionId: string,
@@ -127,7 +124,6 @@ export function useTableMutations({
   };
 
   return {
-    addHomologationTable,
     addTable,
     addTableColumn,
     addTableRow,

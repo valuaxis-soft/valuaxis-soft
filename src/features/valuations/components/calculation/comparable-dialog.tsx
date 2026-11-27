@@ -379,6 +379,8 @@ export type ComparableDialogProps = {
   /** The screenshot and photos a new comparable opens with (pasted in «Pegar anuncio»); uploaded when it is saved. */
   initialImages?: PendingImages;
   characteristicFields: CharacteristicField[];
+  /** The names of the card's data in this market, the same as the columns of its tables (video 8.9): renamed in a header, renamed here. */
+  fieldLabels?: Record<string, string>;
   comparableType: ComparableType;
   unitLabel: string;
   readOnly: boolean;
@@ -874,6 +876,8 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
       ) : control(),
     };
   };
+  // A datum the market named otherwise (a header of its tables renamed) reads that name here too.
+  const named = (key: string, fallback: string) => props.fieldLabels?.[key]?.trim() || fallback;
   const field = (key: string, label: ReactNode, control: ReactNode, options: { htmlFor?: string; wide?: boolean } = {}): SheetField =>
     ({ key, label, control, htmlFor: options.htmlFor, wide: options.wide });
 
@@ -1023,7 +1027,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
         {area && price ? (price / area).toLocaleString("es-MX", { style: "currency", currency: "MXN" }) : "—"}
       </p>
     ))]),
-    field("offerDate", "Fecha de la oferta", (
+    field("offerDate", named("offerDate", "Fecha de la oferta"), (
       <Input id={FIELD_IDS.offerDate} type="date" value={draft.offerDate} onChange={set("offerDate")} />
     ), { htmlFor: FIELD_IDS.offerDate }),
     // A machine's age: from its «Año» to the valuation's day unless typed (the construction, where it goes for real estate, is not shown).
@@ -1187,19 +1191,19 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
   ];
 
   const source: SheetField[] = [
-    field("source", "Fuente o portal", (
+    field("source", named("sourceName", "Fuente o portal"), (
       <Input id={FIELD_IDS.source} autoComplete={NO_BROWSER_AUTOFILL} placeholder="Inmobiliaria, portal o anuncio" value={draft.sourceName} onChange={set("sourceName")} />
     ), { htmlFor: FIELD_IDS.source }),
-    field("contact", "Anunciante", (
+    field("contact", named("contactName", "Contacto"), (
       <Input id={FIELD_IDS.contact} autoComplete={NO_BROWSER_AUTOFILL} value={draft.contactName} onChange={set("contactName")} />
     ), { htmlFor: FIELD_IDS.contact }),
-    field("phone", "Teléfono", (
+    field("phone", named("contactPhone", "Teléfono"), (
       <Input id={FIELD_IDS.phone} autoComplete={NO_BROWSER_AUTOFILL} inputMode="tel" value={draft.contactPhone} onChange={set("contactPhone")} />
     ), { htmlFor: FIELD_IDS.phone }),
-    field("consultedOn", "Fecha de consulta", (
+    field("consultedOn", named("consultedOn", "Fecha de consulta"), (
       <Input id={FIELD_IDS.consultedOn} type="date" value={draft.consultedOn} onChange={set("consultedOn")} />
     ), { htmlFor: FIELD_IDS.consultedOn }),
-    field("validity", "Vigencia de la oferta", (
+    field("validity", named("validUntil", "Vigencia de la oferta"), (
       <>
         <NativeSelect id={FIELD_IDS.validity} className="w-full" value={draft.validityMonths} onChange={set("validityMonths")}>
           <NativeSelectOption value="">{draft.validUntil ? "La fecha capturada" : "Sin indicar"}</NativeSelectOption>
@@ -1212,10 +1216,10 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
         </p>
       </>
     ), { htmlFor: FIELD_IDS.validity }),
-    field("publicationId", "ID de publicación", (
+    field("publicationId", named("publicationId", "ID de publicación"), (
       <Input id={FIELD_IDS.publicationId} autoComplete={NO_BROWSER_AUTOFILL} maxLength={120} value={draft.publicationId} onChange={set("publicationId")} />
     ), { htmlFor: FIELD_IDS.publicationId }),
-    field("url", "Liga del anuncio", (
+    field("url", named("url", "Liga del anuncio"), (
       <div className="flex gap-1.5">
         <Input id={FIELD_IDS.url} autoComplete={NO_BROWSER_AUTOFILL} type="url" placeholder="https://" value={draft.url} onChange={set("url")} />
         {/* «Ver anuncio» right in the card. */}
@@ -1236,7 +1240,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
   ];
 
   const land: SheetField[] = [
-    field("landUse", "Uso de suelo", (
+    field("landUse", named("landUse", "Uso de suelo"), (
       <SuggestInput
         value={draft.landUse}
         options={suggestions.characteristics.landUse}
@@ -1249,10 +1253,10 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
       </SuggestInput>
     ), { htmlFor: FIELD_IDS.landUse }),
     ...fields.filter((item) => LAND_FIELDS.has(item.key)).map((item) => characteristicField(item)),
-    field("paving", "Pavimento / acceso", (
+    field("paving", named("paving", "Pavimento / acceso"), (
       <Input id={FIELD_IDS.paving} autoComplete={NO_BROWSER_AUTOFILL} maxLength={80} value={draft.paving} onChange={set("paving")} />
     ), { htmlFor: FIELD_IDS.paving }),
-    field("blockPosition", "Posición en manzana", (
+    field("blockPosition", named("blockPosition", "Ubicación en manzana"), (
       <Input id={FIELD_IDS.blockPosition} autoComplete={NO_BROWSER_AUTOFILL} maxLength={80} placeholder="Intermedio, esquina…" value={draft.blockPosition} onChange={set("blockPosition")} />
     ), { htmlFor: FIELD_IDS.blockPosition }),
   ];

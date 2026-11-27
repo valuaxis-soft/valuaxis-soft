@@ -299,7 +299,7 @@ test("the conclusion follows the approaches: Arandas concludes 8,580,000 with th
   assert.equal(weighted.SJustificacion, "Ponderación de prueba.");
 });
 
-test("«Homologar» off is stored and the stored value follows the offers; an empty market can be removed", async () => {
+test("a market stored with «Homologar» off homologates with its factors (video 8.10, 03:25); an empty market can be removed", async () => {
   const fixture = await createValuationFixture();
   const user = await loadArandas(fixture);
   const before = await getMarketCalculation(fixture.publicId, fixture.organizationId, "TERRENO_VENTA");
@@ -309,7 +309,7 @@ test("«Homologar» off is stored and the stored value follows the offers; an em
   assert.equal(off.settings.homologate, false);
   const offers = off.comparables.map((item) => (item.price as number) / (item.area as number));
   const stored = await storedApproach(fixture);
-  assert.ok(Math.abs(Number(stored.approach.NValorPromedioHomologado) - offers.reduce((a, b) => a + b, 0) / offers.length) < 0.01, "the stored mean is the offers' mean");
+  assert.ok(Math.abs(Number(stored.approach.NValorPromedioHomologado) - offers.reduce((a, b) => a + b, 0) / offers.length) > 0.01, "the stored mean is the homologated one, not the offers'");
   // The factors captured stay with the comparables.
   assert.ok(off.comparables.every((item) => item.factors.length > 0));
 

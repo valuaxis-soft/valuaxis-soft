@@ -476,6 +476,15 @@ export type MarketSettingsDto = {
    * and the mean, without the median.
    */
   printedStatistics?: PrintedStatistics | null;
+  /**
+   * The names the appraiser gave the data of the card in this market (video
+   * 8.9): the card and the columns of the tables read the same name; also the
+   * names of the subject's area, the lote tipo, the frente and the fondo
+   * ("spec.…"). Missing, the card's and the format's.
+   */
+  fieldLabels?: Record<string, string> | null;
+  /** Data of the card shown as columns of the market's tables, by table, in the order added (video 8.9). */
+  linkedColumns?: Partial<Record<"caracteristicas" | "ofertas" | "homologacion", string[]>> | null;
   /** Formulas typed in the numeric fields ("subjectArea", "adoptedUnitValue"); absent keeps the stored ones whose value did not change. */
   formulas?: CapturedFormulas;
 };
@@ -555,31 +564,66 @@ export function marketEngineConfig(settings: Pick<MarketSettingsDto, "rounding">
 export const MARKET_STATISTICS = ["offerMin", "offerMax", "initialDispersion", "min", "max", "dispersion", "mean", "median"] as const;
 export type MarketStatistic = (typeof MARKET_STATISTICS)[number];
 
-/** The appraiser's choice of statistics: all of them in the order chosen, and the ones left out of the dictamen. */
-export type PrintedStatistics = { order: MarketStatistic[]; hidden: MarketStatistic[] };
+/**
+ * A statistic the appraiser adds to the box (video 8.10, 06:02: «yo quiero
+ * que haya uno que diga moda… u otro valor estadístico»): one of the usual
+ * ones over the homologated unit values, or a formula of his own over them.
+ */
+export const EXTRA_STATISTIC_KINDS = ["mode", "stdev", "cv", "range", "count", "formula"] as const;
+export type ExtraStatisticKind = (typeof EXTRA_STATISTIC_KINDS)[number];
+export type ExtraStatistic = { id: string; label: string; kind: ExtraStatisticKind; formula?: string | null };
+/** Keys of the statistics the appraiser adds: "custom:" and a short id. */
+export const EXTRA_STATISTIC_KEY = /^custom:[a-z0-9-]{1,40}$/;
+export const MAX_EXTRA_STATISTICS = 8;
+
+/** A statistic of the box: one of the homologation's, or one the appraiser added. */
+export type StatisticKey = MarketStatistic | `custom:${string}`;
+
+/**
+ * The appraiser's choice of statistics: all of them in the order chosen, the
+ * ones left out of the dictamen, the names he gave them and the ones he added.
+ */
+export type PrintedStatistics = {
+  order: StatisticKey[];
+  hidden: StatisticKey[];
+  labels?: Record<string, string>;
+  extra?: ExtraStatistic[];
+};
 
 /** The mean and the median print beside the adopted value; the rest in the box of the dispersion. */
-export const STATISTICS_BESIDE_ADOPTED: ReadonlySet<MarketStatistic> = new Set(["mean", "median"]);
+export const STATISTICS_BESIDE_ADOPTED: ReadonlySet<string> = new Set(["mean", "median"]);
 
-const DEFAULT_PRINTED_STATISTICS: PrintedStatistics = { order: [...MARKET_STATISTICS], hidden: ["median"] };
+/** The format's: every statistic, the median too (video 8.10, 00:16: «¿dónde me dejaron la mediana?»). */
+const DEFAULT_PRINTED_STATISTICS: PrintedStatistics = { order: [...MARKET_STATISTICS], hidden: [] };
 
 /** The choice of statistics with every statistic once, in the order chosen; missing, the format's. */
 export function printedStatisticsOf(settings: Pick<MarketSettingsDto, "printedStatistics">): PrintedStatistics {
   const chosen = settings.printedStatistics;
   if (!chosen) return DEFAULT_PRINTED_STATISTICS;
-  const known = new Set<string>(MARKET_STATISTICS);
+  const extra = (chosen.extra ?? []).filter((item) => EXTRA_STATISTIC_KEY.test(item.id));
+  const known = new Set<string>([...MARKET_STATISTICS, ...extra.map((item) => item.id)]);
   const order = [...new Set(chosen.order.filter((key) => known.has(key)))];
-  return { order: [...order, ...MARKET_STATISTICS.filter((key) => !order.includes(key))], hidden: chosen.hidden.filter((key) => known.has(key)) };
+  return {
+    order: [...order, ...[...MARKET_STATISTICS, ...extra.map((item) => item.id as StatisticKey)].filter((key) => !order.includes(key))],
+    hidden: chosen.hidden.filter((key) => known.has(key)),
+    ...(chosen.labels && Object.keys(chosen.labels).length ? { labels: chosen.labels } : {}),
+    ...(extra.length ? { extra } : {}),
+  };
 }
 
 /** The statistics that print, in their order. */
-export function shownStatistics(settings: Pick<MarketSettingsDto, "printedStatistics">): MarketStatistic[] {
+export function shownStatistics(settings: Pick<MarketSettingsDto, "printedStatistics">): StatisticKey[] {
   const { order, hidden } = printedStatisticsOf(settings);
   return order.filter((key) => !hidden.includes(key));
 }
 
-/** Whether the market homologates its comparables: it does unless "Homologar" was turned off. */
-export const homologatesOf = (settings: Pick<MarketSettingsDto, "homologate">) => settings.homologate !== false;
+/**
+ * Whether the market homologates its comparables: always (video 8.10, 03:25:
+ * «homologar siempre homologa»). The factors are the homologation table's
+ * columns, so a factor not wanted is a column taken out; a capture saved
+ * with «Homologar» off homologates again with the factors it kept.
+ */
+export const homologatesOf = (_settings: Pick<MarketSettingsDto, "homologate">) => true;
 
 /** Whether the dictamen prints the homologation table: only when the market homologates and the table was not left out. */
 export const printsHomologationTable = (settings: Pick<MarketSettingsDto, "homologate" | "showHomologationTable">) =>

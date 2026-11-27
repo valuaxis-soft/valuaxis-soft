@@ -175,6 +175,8 @@ export function CommitCell(props: {
         problem && "border-destructive text-destructive dark:text-red-400",
         withFormulas && formula.writingFormula && "font-mono text-blue-700 ring-2 ring-blue-500 dark:text-blue-300",
         props.className,
+        // An italic figure aligned right keeps the room of its last letter.
+        props.computed && props.numeric && editing === null && "pr-2.5",
         live.warning && cn(LIVE_WARNING_CLASS, "pl-4"),
       )}
       value={shown}

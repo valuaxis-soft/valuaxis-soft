@@ -5,9 +5,9 @@ import {
   useCallback,
   useContext,
   useEffect,
-  useEffectEvent,
   useLayoutEffect,
   useState,
+  useRef,
   useSyncExternalStore,
   type ClipboardEvent,
   type FormEvent,
@@ -44,7 +44,16 @@ export type CaptureAddress =
   /** The figure of a row of a box under the table. */
   | { table: string; box: string }
   /** Under the grid of the table: adding a row. */
-  | { table: string; part: "footer" };
+  | { table: string; part: "footer" }
+  /**
+   * Over the table: what the capture sets for it and does not print (the
+   * subject's data over the homologation, the buttons over the comparables),
+   * right above the table it affects (video 8.10: one structure, in the order
+   * of the appraiser's Excel, no «configuration» apart).
+   */
+  | { table: string; part: "before" }
+  /** After everything of the table (its notes and boxes): what the capture adds at its end (the values and the statistics of a market). */
+  | { table: string; part: "after" };
 
 /** The key of a place; ids are compared in lower case, as they come back saved. */
 export function captureSlotKey(address: CaptureAddress): string {
@@ -62,7 +71,28 @@ type Listener = () => void;
  * (a factor's): renamed in the table, the calculation takes the name and
  * writes it everywhere it prints, instead of the table keeping a label of its own.
  */
-export type CaptureHeaderRename = { handles: (columnId: string) => boolean; rename: (columnId: string, name: string) => void };
+export type CaptureHeaderRename = {
+  handles: (columnId: string) => boolean;
+  rename: (columnId: string, name: string) => void;
+  /**
+   * The columns the appraiser may take out of the table (video 8.9: «debo de
+   * poder eliminar columnas»); the ones the calculation needs stay. Missing,
+   * none: they are hidden, as before.
+   */
+  removable?: (columnId: string) => boolean;
+  /** A column taken out that the calculation takes itself (a factor, a datum of the card): the table does not keep it out, the calculation drops it. */
+  takesRemoval?: (columnId: string) => boolean;
+  remove?: (columnId: string) => void;
+  /** A column added after `after` that becomes the calculation's (a factor among the factors): the table does not keep it as its own. */
+  takesInsert?: (after: string | null) => boolean;
+  /** `columnId`: the column as the table added it, so one insertion is taken once. */
+  insert?: (after: string | null, name: string, columnId: string) => void;
+  /** Rows of the table's boxes the panel edits as a table of its own (the statistics), by `summaryRowKey`: not repeated among the box labels. */
+  boxRowManaged?: (rowKey: string) => boolean;
+  /** The data of the card the table may show as a column, and whether each already is one («Dato de la ficha»). */
+  linkable?: () => Array<{ key: string; label: string; linked: boolean }>;
+  link?: (key: string) => void;
+};
 
 /** What the panel declared and where the tables left room for it, for one section of the editor. */
 export class CaptureStore {
@@ -93,6 +123,13 @@ export class CaptureStore {
 
   isDeclared = (key: string) => this.declared.has(key);
 
+  /** Whether the capture puts something at the end of the rows of a table (its actions): the table leaves them room. */
+  hasRowSlots = (table: string) => {
+    const prefix = `${table.toLowerCase()}|row|`;
+    for (const key of this.declared.keys()) if (key.startsWith(prefix)) return true;
+    return false;
+  };
+
   declare(key: string) {
     const count = this.declared.get(key) ?? 0;
     this.declared.set(key, count + 1);
@@ -113,8 +150,11 @@ export class CaptureStore {
 
   setHeaderRename(table: string, rename: CaptureHeaderRename) {
     this.headers.set(table.toLowerCase(), rename);
+    this.notify();
     return () => {
-      if (this.headers.get(table.toLowerCase()) === rename) this.headers.delete(table.toLowerCase());
+      if (this.headers.get(table.toLowerCase()) !== rename) return;
+      this.headers.delete(table.toLowerCase());
+      this.notify();
     };
   }
 
@@ -159,12 +199,43 @@ export function usePublishCapturePages(pages: CapturePages | null) {
 /** The store of the section's capture, for a table to ask who names its columns. */
 export const useCaptureStore = () => useContext(CaptureStoreContext);
 
-/** The panel names those columns of that table: a header renamed there is the calculation's name. */
-export function useCaptureHeaderRename(table: string, handles: (columnId: string) => boolean, rename: (columnId: string, name: string) => void) {
+/**
+ * The panel manages those columns of that table: a header renamed there is
+ * the calculation's name, and what it says of taking out, adding and linking
+ * columns is the calculation's. Always read as the panel renders now.
+ */
+export function useCaptureColumns(table: string, columns: CaptureHeaderRename) {
   const store = useContext(CaptureStoreContext);
-  const onHandles = useEffectEvent(handles);
-  const onRename = useEffectEvent(rename);
-  useEffect(() => store?.setHeaderRename(table, { handles: (columnId) => onHandles(columnId), rename: (columnId, name) => onRename(columnId, name) }), [store, table]);
+  const latest = useRef(columns);
+  useLayoutEffect(() => {
+    latest.current = columns;
+  });
+  useEffect(() => store?.setHeaderRename(table, {
+    handles: (columnId) => latest.current.handles(columnId),
+    rename: (columnId, name) => latest.current.rename(columnId, name),
+    removable: (columnId) => latest.current.removable?.(columnId) ?? false,
+    takesRemoval: (columnId) => latest.current.takesRemoval?.(columnId) ?? false,
+    remove: (columnId) => latest.current.remove?.(columnId),
+    takesInsert: (after) => latest.current.takesInsert?.(after) ?? false,
+    insert: (after, name, columnId) => latest.current.insert?.(after, name, columnId),
+    boxRowManaged: (rowKey) => latest.current.boxRowManaged?.(rowKey) ?? false,
+    linkable: latest.current.linkable ? () => latest.current.linkable?.() ?? [] : undefined,
+    link: (key) => latest.current.link?.(key),
+  }), [store, table]);
+}
+
+/** Whether the capture puts actions at the end of the rows of the table («Ver ficha», «Eliminar»). */
+export function useCaptureRowSlots(table: string): boolean {
+  const store = useContext(CaptureStoreContext);
+  const read = () => store?.hasRowSlots(table) ?? false;
+  return useSyncExternalStore(store?.subscribe ?? NO_SUBSCRIPTION, read, read);
+}
+
+/** Who manages the columns of a table of the capture, once its panel says so; null for the others. */
+export function useCaptureColumnsOf(table: string): CaptureHeaderRename | null {
+  const store = useContext(CaptureStoreContext);
+  const read = () => store?.headerRename(table) ?? null;
+  return useSyncExternalStore(store?.subscribe ?? NO_SUBSCRIPTION, read, () => null);
 }
 
 /** Whether the capture fills that place of the table. */
@@ -413,3 +484,6 @@ function CaptureSlotContent({ element, children }: { element: HTMLElement; child
     </span>
   );
 }
+
+/** The place over the whole section, at its top, where a calculation keeps in sight where the appraiser is. */
+export const SECTION_TOP_SLOT = "seccion";

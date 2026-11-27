@@ -4,7 +4,7 @@ import { conceptCreationPreset } from "@/features/valuations/services/concept-ty
 import { UNTITLED_CARATULA_CONCEPT } from "@/features/valuations/services/caratula-blocks";
 import { NEW_SECTION_TITLE } from "@/features/valuations/services/section-edit-operations";
 import { CUSTOM_SECTION_ID_PREFIX } from "@/features/valuations/sections/section-registry";
-import { DEFAULT_TABLE_TITLE, createHomologationTable } from "@/features/valuations/services/table";
+import { DEFAULT_TABLE_TITLE } from "@/features/valuations/services/table";
 import type { SectionDocumentRole } from "@/features/valuations/services/document-structure";
 
 export const newId = () => crypto.randomUUID();
@@ -80,10 +80,7 @@ export function createApartado(): Apartado {
   };
 }
 
-export function createTable(preset?: "homologation"): TableContent {
-  if (preset === "homologation") {
-    return createHomologationTable() as unknown as TableContent;
-  }
+export function createTable(): TableContent {
   // Create directly as V2 to avoid mixed-state issues
   const id = `tbl-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
   const colConcepto = `col-concepto-${id}`;

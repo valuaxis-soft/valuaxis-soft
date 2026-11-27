@@ -79,6 +79,8 @@ export function MarketCharacteristicsTable(props: {
   onFields: (update: FieldsUpdate) => void;
   onSubject: (update: SubjectUpdate) => void;
   onComparable: (comparable: ComparableDto, change: (current: ComparableDto) => ComparableDto) => void;
+  /** An added characteristic deleted from the list and from the cards; missing, it only leaves the list. */
+  onRemoveEverywhere?: (field: CharacteristicField) => void;
 }) {
   const { fields, comparables, readOnly } = props;
   const { thousandsSeparator } = useNumberPresentation();
@@ -168,7 +170,8 @@ export function MarketCharacteristicsTable(props: {
                   onComparable={props.onComparable}
                   onMove={(by, event) => move(field.key, by, event)}
                   onToggleHidden={() => toggleHidden(field.key)}
-                  onRemove={() => props.onFields((current) => current.filter((item) => item.key !== field.key))}
+                  // An added characteristic goes from the cards too, after asking (video 8.10); one of the format leaves only the list.
+                  onRemove={() => (!isBuiltinCharacteristic(field.key) && props.onRemoveEverywhere ? props.onRemoveEverywhere(field) : props.onFields((current) => current.filter((item) => item.key !== field.key)))}
                 />
               ))}
               <tr className={cn(CALC_ROW, "bg-muted/20")}>
