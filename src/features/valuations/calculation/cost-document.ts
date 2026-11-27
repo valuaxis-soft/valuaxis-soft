@@ -16,6 +16,7 @@ import {
   costColumnsOf,
   costEngineConfig,
   conservationText,
+  costAdditionsOf,
   effectiveConservation,
   extraFactorLabel,
   extraFactorsOf,
@@ -133,7 +134,9 @@ export function costDocumentBlocks(
   }
 
   const constructions = calculation.constructions.filter((row) => capture || value(`costos.construcciones.${row.ref}.vnrParcial`) !== undefined);
-  if (constructions.length) {
+  // Being captured, B) is always on the page, with no row yet: it is where a construction is added (video 8.14, 42:27:
+  // «me desaparecieron… B», the page showed only A and C while the valuation had no construction type).
+  if (constructions.length || capture) {
     const builtArea = constructions.reduce((sum, row) => sum + (row.area ?? 0), 0);
     const type = [figureColumn("Ref."), textColumn("Tipo de Construcción"), figureColumn("Superficie Construida (m²)")];
     apartados.push(generatedApartado(`${PREFIX}-construcciones`, "B) CONSTRUCCIONES", {
@@ -303,27 +306,54 @@ export function costDocumentBlocks(
   // The physical value closes the page, under the last table, with the parts it adds up.
   const last = apartados.at(-1);
   if (!last) return [];
+  // A, B and C are always listed, with what each one adds (zero when there is none): the sum reads as the
+  // appraiser's book, and a part missing shows (video 8.14, 43:08: «valor del terreno, valor de las
+  // construcciones y valor de las instalaciones»; the sum said A+C and nobody saw that B was not there).
+  const additions = costAdditionsOf(calculation.columns);
   const parts = [
-    ...(value("costos.terreno.valor") !== undefined ? [{ letter: "A", label: "A) Valor del Terreno:", amount: result.land }] : []),
-    ...(constructions.length ? [{ letter: "B", label: "B) Valor de las Construcciones:", amount: result.constructions }] : []),
-    ...(valued.length ? [{ letter: "C", label: "C) Valor de Instalaciones Especiales:", amount: result.specialInstallations }] : []),
+    { letter: "A", label: "A) Valor del Terreno:", amount: result.land },
+    { letter: "B", label: "B) Valor de las Construcciones:", amount: result.constructions },
+    { letter: "C", label: "C) Valor de Instalaciones Especiales:", amount: result.specialInstallations },
     ...(result.indirects ? [{ letter: "D", label: "D) Costos Indirectos:", amount: result.indirects }] : []),
+    // The values the appraiser added, each with the next letter (E, F…), as lines of the same summary that the sum adds.
+    ...additions.map((item, index) => {
+      const letter = String.fromCharCode("E".charCodeAt(0) + index);
+      return { letter, label: `${letter}) ${item.label.replace(/:$/, "")}:`, amount: item.amount, id: costExtraValueRowId(item.id) };
+    }),
   ];
   // The part whose own box closes the same table is not written again under it (video 8.7, 11:40: «me muestran C y luego otra vez C»).
   const letterOf: Record<string, string> = { [`${PREFIX}-terreno`]: "A", [`${PREFIX}-construcciones`]: "B", [`${PREFIX}-instalaciones`]: "C", [`${PREFIX}-indirectos`]: "D" };
   const above = letterOf[last.id];
   const closing: TableSummaryBox = {
-    id: "valor-fisico",
+    id: COST_PHYSICAL_VALUE_BOX,
     position: "bottom",
     align: "end",
     rows: [
-      ...parts.filter((part) => part.letter !== above).map((part) => ({ id: part.letter, label: part.label, value: money(part.amount) })),
+      ...parts.filter((part) => part.letter !== above).map((part) => ({ id: "id" in part ? part.id : part.letter, label: part.label, value: money(part.amount) })),
       // As the appraiser's current book closes the page (Bugambilias, video of 20 Oct 2026; REAL_ARANDAS).
       { id: "total", label: `VALOR FÍSICO DE REPOSICIÓN (${parts.map((part) => part.letter).join("+")}):`, value: money(result.physicalValue), emphasis: "total" },
     ],
   };
   const closed = { ...last, tables: last.tables.map((item, index) => (index === last.tables.length - 1 ? withSummaryBox(item, closing) : item)) };
   return [generatedBlock(PREFIX, "ENFOQUE FÍSICO O DE COSTOS", { apartados: [...apartados.slice(0, -1), closed] })];
+}
+
+/** The box of the physical value, under the last table of the page. */
+export const COST_PHYSICAL_VALUE_BOX = "valor-fisico";
+
+/** The row of the physical value's box that prints a value the appraiser added. */
+export const costExtraValueRowId = (id: string) => `extra-${id}`;
+
+/** The table of the page whose boxes close it with the physical value; null while there is none. */
+export function costPhysicalValueTable(blocks: Block[]): string | null {
+  for (const block of blocks) {
+    for (const apartado of block.apartados) {
+      for (const item of apartado.tables) {
+        if (ensureTableV2(item).schema?.summaryBoxes?.some((box) => box.id === COST_PHYSICAL_VALUE_BOX)) return item.id;
+      }
+    }
+  }
+  return null;
 }
 
 /**
@@ -364,7 +394,17 @@ export function costCaptureColumns(columns: { constructions: DemeritColumnsDto; 
       factors: Object.fromEntries(LAND_FACTORS.map((factor, index) => [factor.key, generatedColumnId(3 + index)])) as Record<(typeof LAND_FACTORS)[number]["key"], string>,
       resultantFactor: generatedColumnId(3 + LAND_FACTORS.length),
     },
-    constructions: { table: table("construcciones-tipos"), rows: rowsOf("construcciones-tipos"), ref: generatedColumnId(0), ...demerit(6, columns.constructions.extra.length) },
+    constructions: {
+      table: table("construcciones-tipos"),
+      rows: rowsOf("construcciones-tipos"),
+      ref: generatedColumnId(0),
+      // The type's own data, written here as in INF. CONSTRUCCIÓN (video 8.14, 43:20).
+      description: generatedColumnId(1),
+      area: generatedColumnId(2),
+      age: generatedColumnId(3),
+      usefulLife: generatedColumnId(4),
+      ...demerit(6, columns.constructions.extra.length),
+    },
     constructionValues: { table: table("construcciones-valores"), rows: rowsOf("construcciones-valores"), unitReplacementCost: generatedColumnId(3) },
     installations: {
       table: table("instalaciones-partidas"),
@@ -385,6 +425,7 @@ export function costCaptureColumns(columns: { constructions: DemeritColumnsDto; 
       concept: generatedColumnId(0),
       percentage: generatedColumnId(1),
       base: generatedColumnId(2),
+      amount: generatedColumnId(3),
     },
   };
 }

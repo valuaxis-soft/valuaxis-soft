@@ -9,7 +9,6 @@ import test from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { addConstructionDisabledReason } from "../src/features/valuations/calculation/cost-types";
 import { IMPORT_TEMPLATE_WORDING, ImportComparablesDialog } from "../src/features/valuations/components/calculation/import-comparables-dialog";
 import { conceptPreview } from "../src/features/valuations/components/editor/concept-creation-control";
 import { ConceptEditorList } from "../src/features/valuations/components/editor/concept-editor";
@@ -84,11 +83,8 @@ test("a stored image taken out of the document is deleted from the server only a
 /*  4. «+ Construcción» says why it is off                             */
 /* ------------------------------------------------------------------ */
 
-test("«+ Construcción» disabled says why", () => {
-  assert.match(addConstructionDisabledReason(0, 0) ?? "", /Aún no hay tipos de construcción/);
-  assert.match(addConstructionDisabledReason(2, 0) ?? "", /ya están en el cálculo/);
-  assert.equal(addConstructionDisabledReason(2, 1), null, "with a type out of the calculation it adds a row");
-});
+// Since 27 Nov 2026 (video 8.14, 43:20) «+ Construcción» is never off: without a type to bring back it adds a new
+// one, captured in the cost table itself (tests/valuation-costos-conclusion-semana8b.test.tsx).
 
 /* ------------------------------------------------------------------ */
 /*  5. Numeric concepts are born numeric                               */

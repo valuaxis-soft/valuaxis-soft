@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import {
   asCaptureTable,
+  captureReadable,
   captureTablesOf,
   findCaptureTable,
   isCaptureMarked,
@@ -131,6 +132,8 @@ export function useConstructionCapture({
     const table = findCaptureTable(section, "types");
     const previous = synced.current.types;
     if (!table || !isCaptureMarked(table) || !previous) return;
+    // A table whose reference column can no longer be found is not read as empty: that would delete every type.
+    if (!captureReadable(table, "types")) return;
     const items = readCapture(table, "types", previous);
     if (sameItems(items, previous)) return;
     const attempt = refusedBefore("types", items);
@@ -183,6 +186,7 @@ export function useConstructionCapture({
     const previous = synced.current.installations;
     const current = costsRef.current;
     if (!table || !isCaptureMarked(table) || isCaptureUnlinked(table) || !previous || !current) return;
+    if (!captureReadable(table, "installations")) return;
     const items = readCapture(table, "installations", previous);
     if (sameItems(items, previous)) return;
     const attempt = refusedBefore("installations", items);

@@ -85,12 +85,20 @@ export type OtherAssetInput = {
 /** `base` defaults to constructions plus special installations (B + C). */
 export type IndirectInput = { concept: string; percentage: number; base?: number };
 
+/**
+ * A value the appraiser adds to the physical value as it is (video 8.14,
+ * 43:50: «quiero cualquier otro dato… que me lo tome en cuenta»): a line of
+ * the summary with its amount, which the physical value adds.
+ */
+export type CostAdditionInput = { label: string; amount: number };
+
 export type CostApproachInput = {
   land?: UrbanLandInput | RuralLandInput;
   constructions?: ConstructionInput[];
   specialInstallations?: SpecialInstallationInput[];
   otherAssets?: OtherAssetInput[];
   indirects?: IndirectInput[];
+  additions?: CostAdditionInput[];
 };
 
 export type CostApproachResult = {
@@ -99,6 +107,8 @@ export type CostApproachResult = {
   specialInstallations: number;
   otherAssets: number;
   indirects: number;
+  /** The values the appraiser added to the summary, summed. */
+  additions?: number;
   physicalValue: number;
 };
 
@@ -110,16 +120,26 @@ export function computeCostApproach(input: CostApproachInput, config: EngineConf
   const otherAssets = input.otherAssets?.length ? costOtherAssets(input.otherAssets, config, trace) : 0;
   const indirects = input.indirects?.length ? costIndirects(input.indirects, constructions + specialInstallations, trace) : 0;
 
-  const sum = land + constructions + specialInstallations + otherAssets + indirects;
+  const additions = input.additions?.length ? costAdditions(input.additions, trace) : 0;
+
+  const sum = land + constructions + specialInstallations + otherAssets + indirects + additions;
   const physicalValue = trace.record({
     key: "costos.valorFisico",
     label: "Valor físico o directo",
-    formula: "A + B + C + D + E",
-    inputs: { A: land, B: constructions, C: specialInstallations, D: otherAssets, E: indirects },
+    formula: additions ? "A + B + C + D + E + otros valores" : "A + B + C + D + E",
+    inputs: { A: land, B: constructions, C: specialInstallations, D: otherAssets, E: indirects, ...(additions ? { otros: additions } : {}) },
     value: roundIfSet(sum, rounding.physicalValue),
     ...roundingField(rounding.physicalValue),
   });
-  return { land, constructions, specialInstallations, otherAssets, indirects, physicalValue };
+  return { land, constructions, specialInstallations, otherAssets, indirects, ...(additions ? { additions } : {}), physicalValue };
+}
+
+function costAdditions(rows: CostAdditionInput[], trace: Trace): number {
+  let total = 0;
+  rows.forEach((row, index) => {
+    total += trace.record({ key: `costos.adiciones.${index + 1}`, label: row.label, formula: "valor capturado", inputs: {}, value: row.amount });
+  });
+  return trace.record({ key: "costos.adiciones.valor", label: "Otros valores", formula: "Σ otros valores", inputs: {}, value: total });
 }
 
 function roundingField(digits: number | null) {

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { capturedFormulasSchema } from "./captured-formulas";
-import { CONSERVATION_CRITERIA, MAX_CONSERVATION_OPTIONS, MAX_EXTRA_DEMERIT_FACTORS, isConservationRating } from "./cost-types";
+import { CONSERVATION_CRITERIA, MAX_CONSERVATION_OPTIONS, MAX_COST_EXTRA_VALUES, MAX_EXTRA_DEMERIT_FACTORS, isConservationRating } from "./cost-types";
 import { roundingSchema, surfacePowerSchema } from "./market-schemas";
 
 const text = (max: number) => z.string().trim().max(max);
@@ -111,7 +111,8 @@ export const costInputSchema = z.object({
   })).max(60).refine(uniqueRefs, "Las referencias de las instalaciones no se pueden repetir."),
   indirects: z.array(z.object({
     concept: text(180),
-    percentage: z.number().finite().min(0).max(1).nullable(),
+    // Typed as a percentage (10 = 10 %) and sent as its fraction (video 8.14, 45:09).
+    percentage: z.number().finite().min(0, "El porcentaje de un indirecto va de 0 % a 100 %.").max(1, "El porcentaje de un indirecto va de 0 % a 100 %.").nullable(),
     base: amount,
   })).max(20),
   rounding: z.object({ land: roundingSchema, constructions: roundingSchema, installations: roundingSchema, physicalValue: roundingSchema }).optional(),
@@ -120,6 +121,7 @@ export const costInputSchema = z.object({
     installations: demeritColumns,
     showMaintenance: z.boolean().nullable(),
     excludedTypes: z.array(text(20)).max(30).optional(),
+    extraValues: z.array(z.object({ id: text(40).min(1), label: text(120), amount })).max(MAX_COST_EXTRA_VALUES).optional(),
   }).optional(),
   formulas: capturedFormulasSchema.optional(),
 });
