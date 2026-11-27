@@ -64,7 +64,8 @@ export function RoundingMenu(props: {
     // The right click stays here: the cell's own menu (the table's) does not open over this one.
     <span className={cn("inline-flex items-center gap-1", props.className)} onContextMenu={(event) => event.stopPropagation()} data-rounding-menu={keyOf(props.value)}>
       <ContextMenu>
-        <ContextMenuTrigger className="inline-flex cursor-context-menu items-center" title={title}>{props.children}</ContextMenuTrigger>
+        {/* A span, not a div: the value may sit in a line of text. */}
+        <ContextMenuTrigger render={<span />} className="inline-flex cursor-context-menu items-center" title={title}>{props.children}</ContextMenuTrigger>
         <ContextMenuContent className="min-w-48">
           <ContextMenuGroup>
             <ContextMenuLabel>Redondeo del {props.label}</ContextMenuLabel>

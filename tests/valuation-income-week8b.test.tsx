@@ -233,6 +233,8 @@ test("the rounding is an option of the concluded value: «⋯» and the right cl
   assert.match(html, /aria-label="Redondeo del valor por ingresos"/);
   assert.match(html, /data-rounding-menu="-3"/);
   assert.match(html, /a miles/);
+  // It sits in a line of text too (the conclusion's «vinculado con … $X»): no block inside a paragraph.
+  assert.doesNotMatch(html, /<div/);
   // Read only: the value and what it is rounded to, no menu.
   const locked = renderToStaticMarkup(<RoundingMenu label="valor por ingresos" value={null} readOnly onChange={() => undefined}>$3,208,500.00</RoundingMenu>);
   assert.ok(!locked.includes("data-rounding-trigger"));

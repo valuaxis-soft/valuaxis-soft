@@ -50,7 +50,8 @@ import {
   type InstallationDto,
   type LandFactorKey,
 } from "@/features/valuations/calculation/cost-types";
-import { computeCostApproach, demeritPreview } from "@/features/valuations/engine/costs";
+import { computeCostApproach, demeritPreview, type CostApproachResult } from "@/features/valuations/engine/costs";
+import { money } from "@/features/valuations/calculation/generated-content";
 import { nextCaptureRef } from "@/features/valuations/calculation/construction-capture";
 import { Trace } from "@/features/valuations/engine/trace";
 import { parseDecimal } from "@/features/valuations/calculation/free-formula";
@@ -65,7 +66,9 @@ import {
   costIndirectOrder,
   costPhysicalValueTable,
 } from "@/features/valuations/calculation/cost-document";
-import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
+import { SurfacePowerSelect } from "./calculation-controls";
+import type { RoundingDigits } from "@/features/valuations/engine/config";
+import { RoundingMenu } from "./rounding-menu";
 import { CALC_RESULT } from "./calculation-table-style";
 import { ApproachLeftOutNotice, ApproachRemoval, type ApproachInReport } from "./approach-removal";
 import { CaptureSlot, useCaptureColumns, usePublishCapturePages, type CaptureAddress, type CaptureHeaderRename } from "../editor/capture-host";
@@ -120,6 +123,10 @@ const ROUNDING_FIELDS: { key: keyof CostRoundingDto; label: string }[] = [
   { key: "installations", label: "Instalaciones" },
   { key: "physicalValue", label: "Valor físico" },
 ];
+
+/** Each value as its box prints it, already rounded as chosen. */
+const roundedAmount = (result: CostApproachResult, key: keyof CostRoundingDto) =>
+  key === "land" ? result.land : key === "constructions" ? result.constructions : key === "installations" ? result.specialInstallations : result.physicalValue;
 
 const toText = (value: number | null) => (value === null ? "" : String(value));
 const percentText = (fraction: number) => String(Number((fraction * 100).toFixed(6)));
@@ -1258,6 +1265,16 @@ export function CostCalculationPanel(props: {
   // The table the physical value closes, where the values added to it are captured.
   const physicalTable = capturePages ? costPhysicalValueTable(capturePages.blocks) : null;
   const surfaceFormula = step("costos.terreno.factorSuperficie")?.formula;
+  // Where each value's figure sits: the box closing its table; the physical value closes the last table of the page.
+  const roundingTable = (key: keyof CostRoundingDto) => (key === "physicalValue" ? physicalTable
+    : key === "land" ? at.land.table : key === "constructions" ? at.constructionValues.table : at.installationValues.table);
+  const result = live.result;
+  const roundingSlots = result ? ROUNDING_FIELDS.flatMap((field) => {
+    const table = roundingTable(field.key);
+    const box = field.key === "physicalValue" ? `${COST_PHYSICAL_VALUE_BOX}.total` : "valor.0";
+    return table ? [{ field, address: { table, box } as CaptureAddress, amount: roundedAmount(result, field.key) }] : [];
+  }) : [];
+  const setRounding = (key: keyof CostRoundingDto, digits: RoundingDigits) => change({ rounding: { ...draft.rounding, [key]: digits } });
   const addRowButton = (list: "constructions" | "installations" | "indirects", label: string, reason: string | null = null) => (
     <span title={reason ?? undefined} className="inline-flex items-center gap-2">
       <Button type="button" size="sm" variant="outline" className="w-fit" disabled={readOnly || reason !== null} onClick={() => addRow(list)}>
@@ -1318,17 +1335,6 @@ export function CostCalculationPanel(props: {
               <FieldLabel htmlFor="cost-land-power" className="text-xs">A) Terreno: potencia n</FieldLabel>
               <SurfacePowerSelect id="cost-land-power" value={input.land.surfacePower} onChange={(surfacePower) => change({ surfacePower })} />
             </Field>
-            {ROUNDING_FIELDS.map((field) => (
-              <Field key={field.key}>
-                <FieldLabel htmlFor={`cost-rounding-${field.key}`} className="text-xs">Redondeo: {field.label.toLowerCase()}</FieldLabel>
-                <RoundingSelect
-                  id={`cost-rounding-${field.key}`}
-                  label={`Redondeo de ${field.label.toLowerCase()}`}
-                  value={draft.rounding[field.key]}
-                  onChange={(digits) => change({ rounding: { ...draft.rounding, [field.key]: digits } })}
-                />
-              </Field>
-            ))}
           </div>
           <p className="text-xs text-muted-foreground" data-testid="cost-land-reference-source">
             {reference.source === "subject" ? LAND_REFERENCE_SOURCE.subject : `${LAND_REFERENCE_SOURCE[reference.source]} Lote tipo: ${figure(reference.area)} m².`}
@@ -1419,6 +1425,19 @@ export function CostCalculationPanel(props: {
         <CalculationPrecisionSummary precision={calculation.precision} />
       </EditorConfigPanel>
 
+      {/* Each value's rounding, as an option of its figure in its box under the table (video 8.14, 05:20): «⋯» or right click. */}
+      {roundingSlots.map(({ field, address, amount }) => (
+        <CaptureSlot key={`${field.key}:${address.table}`} at={address}>
+          <RoundingMenu
+            label={`valor de ${field.label.toLowerCase()}`}
+            value={draft.rounding[field.key]}
+            readOnly={readOnly}
+            onChange={(digits) => setRounding(field.key, digits)}
+          >
+            <span className="rounded-sm bg-muted/70 px-1.5 py-1 text-right font-semibold tabular-nums" data-cost-rounding={field.key}>{money(amount)}</span>
+          </RoundingMenu>
+        </CaptureSlot>
+      ))}
       {/* A) Terreno: its row of the table of the page. */}
       <CaptureSlot at={landCell(at.land.subjectArea)}>
         <FormulaInput
