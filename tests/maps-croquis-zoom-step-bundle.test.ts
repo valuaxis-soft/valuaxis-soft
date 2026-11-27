@@ -17,3 +17,15 @@ test("the fit still finds a quarter-step zoom that shows the subject and its com
   assert.ok(frame.zoom <= 17 && frame.zoom >= 3);
   assert.equal(Math.round(frame.zoom * 4), frame.zoom * 4, "quarter steps");
 });
+
+test("the out-of-frame notice names each comparable with its market, since every market numbers from C-1", async () => {
+  const { pinsByMarketText, COMPARABLE_MARKETS } = await import("../src/features/maps/croquis");
+  const land = COMPARABLE_MARKETS.find((market) => market.type === "TERRENO_VENTA")!.title;
+  const rent = COMPARABLE_MARKETS.find((market) => market.type === "INMUEBLE_RENTA")!.title;
+  const text = pinsByMarketText([
+    { type: "INMUEBLE_RENTA", reference: 2 },
+    { type: "TERRENO_VENTA", reference: 2 },
+    { type: "TERRENO_VENTA", reference: 3 },
+  ]);
+  assert.equal(text, `${land}: C-2, C-3; ${rent}: C-2`);
+});
