@@ -13,7 +13,7 @@ import { Field, FieldDescription, FieldError, FieldGroup, FieldLabel } from "@/c
 import { closestCenter, DndContext, DragOverlay, useDraggable, useDroppable } from "@dnd-kit/core";
 import { editorCanScroll } from "./editor-dnd-autoscroll";
 import { CalculationLinkBadge } from "../calculation/calculation-link-badge";
-import { conclusionSourceOf } from "@/features/valuations/calculation/conclusion-document";
+import { conclusionSourceOf, readsInWords } from "@/features/valuations/calculation/conclusion-document";
 import { cn } from "@/lib/utils";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
@@ -1138,6 +1138,36 @@ function ConceptValueInput({
   );
 }
 
+/**
+ * A value read in words, «(OCHO MILLONES QUINIENTOS MIL PESOS 00/100 M.N.)»:
+ * the whole text, wrapped on the lines it takes, never cut to the field's
+ * width (QA of video 8.14, 49:13: the field showed «(CU…»). One line of
+ * text: Enter leaves the field. Without `onChange` it only shows (an amount
+ * in words, typed as its figure on focus).
+ */
+function WordsValueField({ value, readOnly, onChange, onFocus, className }: { value: string; readOnly: boolean; onChange?: (text: string) => void; onFocus?: () => void; className?: string }) {
+  return (
+    <Textarea
+      autoComplete="off"
+      className={cn("min-h-10 min-w-0 resize-none py-2 leading-snug", className)}
+      data-value-in-words=""
+      disabled={readOnly}
+      placeholder="Dato"
+      readOnly={!onChange}
+      rows={1}
+      value={value}
+      onChange={(event) => onChange?.(event.target.value.replace(/\s*\n\s*/g, " "))}
+      onFocus={onFocus}
+      onKeyDown={(event) => {
+        if (event.key === "Enter") {
+          event.preventDefault();
+          event.currentTarget.blur();
+        }
+      }}
+    />
+  );
+}
+
 /** The value of a "list" concept: one of its options, or none. A value not in the list is kept and shown. */
 function ConceptListValueSelect({
   concept,
@@ -1246,6 +1276,17 @@ export function ConceptEditorRow({
   const calculationLink = useContext(ConceptCalculationLinkContext);
   const calculated = Boolean(calculationLink?.isCalculated(concept));
   const calculationLinked = calculated && !concept.calculationUnlinked;
+  // «Vinculado con: …» goes on a line of its own under the value: in the row it took the value's width, and the
+  // value in words read «(CU…» and the concluded value only «M.N.» (QA of video 8.14, 49:13).
+  const linkBadgeRow = calculated ? (
+    <div className="col-span-2 col-start-3 flex min-w-0 justify-start" data-calculation-link-row="">
+      <ConceptCalculationLinkBadge concept={concept} readOnly={readOnly} />
+    </div>
+  ) : null;
+  // A value in words wraps on as many lines as it takes; an amount in words shows its figure while it is typed.
+  const inWords = readsInWords(effectiveConcept);
+  const wordsShown = inWords && !(isNumericConcept(effectiveConcept) && isValueFocused);
+  const wordsFocused = inWords && isValueFocused;
   const unlink = readOnly ? undefined
     : linkState === "none" && calculationLinked && calculationLink ? () => unlinkFromCalculation(calculationLink, concept.id)
       : onUnlink ? () => onUnlink(concept.id) : undefined;
@@ -1410,9 +1451,21 @@ export function ConceptEditorRow({
               <DraftAssist concept={effectiveConcept} container={concepts} allConcepts={allConcepts} onInsert={(value) => handleLinkedAwareUpdate({ value })} />
             )}
           </div>
+        ) : wordsShown ? (
+          withLinkedTextMarks((marked) => withValueFormatChip(
+            <WordsValueField
+              className={formatChip ? "pr-28" : undefined}
+              readOnly={readOnly}
+              value={isNumericConcept(effectiveConcept) ? formatCaratulaConceptValue(effectiveConcept, presentation) : marked.text}
+              onFocus={isNumericConcept(effectiveConcept) ? () => setIsValueFocused(true) : undefined}
+              onChange={isNumericConcept(effectiveConcept) ? undefined : (text) => handleLinkedAwareUpdate({ value: marked.valueOf(text) })}
+            />,
+            formatChip,
+          ))
         ) : (
           withLinkedTextMarks((marked) => withValueFormatChip(
             <ConceptValueInput
+              autoFocus={wordsFocused}
               concept={effectiveConcept}
               className={cn("h-10 min-w-0", formatChip && "pr-28")}
               disabled={readOnly}
@@ -1432,7 +1485,6 @@ export function ConceptEditorRow({
           ))
         )}
         <div className="flex shrink-0 items-center justify-end gap-1">
-          <ConceptCalculationLinkBadge concept={concept} readOnly={readOnly} />
           <ConceptLinkStatus
             conceptId={concept.id}
             state={linkState}
@@ -1459,6 +1511,7 @@ export function ConceptEditorRow({
             onColumnPresentationChange={onColumnPresentationChange}
           />
         </div>
+        {linkBadgeRow}
       </div>,
       { showValueFormat: showValueFormatControl, writeValue: (value) => handleLinkedAwareUpdate({ value }), order: false },
     );
@@ -1588,8 +1641,11 @@ export function ConceptEditorRow({
               />
               <HeaderDateNotice concept={{ ...effectiveConcept, headerDate: concept.headerDate }} readOnly={readOnly} onPatch={(patch) => onUpdate(concept.id, patch)} />
             </div>
+          ) : wordsShown && isNumericConcept(effectiveConcept) ? withFormatChip(
+            <WordsValueField className={showValueFormatControl ? "pr-28" : undefined} readOnly={readOnly} value={formatNumericConceptValue(effectiveConcept, presentation)} onFocus={() => setIsValueFocused(true)} />,
           ) : isNumericConcept(effectiveConcept) ? withFormatChip(
             <ConceptValueInput
+              autoFocus={wordsFocused}
               concept={effectiveConcept}
               className={cn("h-10 min-w-0", showValueFormatControl && "pr-28")}
               disabled={readOnly}
@@ -1601,6 +1657,10 @@ export function ConceptEditorRow({
               onFormulaChange={setFormula}
               onFocus={() => setIsValueFocused(true)}
             />,
+          ) : usesSingleLineEditor && wordsShown ? (
+            withTextMarks((marked) => (
+              <WordsValueField readOnly={readOnly} value={marked.text} onChange={(text) => onUpdate(concept.id, { value: marked.valueOf(text) })} />
+            ))
           ) : usesSingleLineEditor ? (
             withTextMarks((marked) => (
               <ConceptValueInput
@@ -1626,7 +1686,6 @@ export function ConceptEditorRow({
         </>
       )}
       <div className="flex shrink-0 items-start justify-end gap-1">
-        <ConceptCalculationLinkBadge concept={concept} readOnly={readOnly} />
         <ConceptOptionsMenu
           concept={effectiveConcept}
           concepts={concepts}
@@ -1648,6 +1707,7 @@ export function ConceptEditorRow({
           onColumnPresentationChange={onColumnPresentationChange}
         />
       </div>
+      {linkBadgeRow}
       {showTerrenoLengthHint && isLongTerrenoConcept(concept) ? (
         <p className="flex items-center gap-1 text-[11px] text-muted-foreground/70 md:col-span-2 md:col-start-2">
           <LockKeyhole className="size-3" />
