@@ -359,7 +359,10 @@ const FIT_MIN_ZOOM = 3;
  */
 export function comparablesFitFrame(subject: LatLon, pins: readonly ComparablePin[]): CroquisFrame {
   if (!pins.length) return COMPARABLES_FRAME;
-  for (let zoom = FIT_MAX_ZOOM; zoom >= FIT_MIN_ZOOM; zoom -= ZOOM_STEP) {
+  // The step is read into a local first: Turbopack left the imported binding unresolved inside this
+  // loop's update expression, and the browser threw «ZOOM_STEP is not defined» (QA, 27 nov 2026).
+  const step = ZOOM_STEP;
+  for (let zoom = FIT_MAX_ZOOM; zoom >= FIT_MIN_ZOOM; zoom -= step) {
     const pixels = [subject, ...pins.map((pin) => pin.point)].map((point) => imagePixel(subject, zoom, point));
     const xs = pixels.map((at) => at.x);
     const ys = pixels.map((at) => at.y);
