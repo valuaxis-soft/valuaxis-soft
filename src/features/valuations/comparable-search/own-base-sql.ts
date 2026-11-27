@@ -8,6 +8,7 @@ import { Prisma } from "@prisma/client";
 import type { ComparableClass } from "../calculation/comparable-classes";
 import { LEGACY_KIND_PATTERNS } from "../calculation/comparable-kinds";
 import { FUZZY_SIMILARITY, FUZZY_TOKEN_MIN, searchTokens, tokenSpellings } from "./normalize";
+import { APPROXIMATE_CACHE_FIELD_KEY, APPROXIMATE_TTL_DAYS } from "../comparable-base/comparable-location.service";
 
 /**
  * The comparables of the firm's base, as `c` with its valuation `a` (NULL for
@@ -139,16 +140,29 @@ const coordinate = (name: string) =>
 export const COMPARABLE_POINT = Prisma.sql`CASE WHEN ${coordinate("latitude")} BETWEEN -90 AND 90 AND ${coordinate("longitude")} BETWEEN -180 AND 180
   THEN ST_SetSRID(ST_MakePoint(${coordinate("longitude")}, ${coordinate("latitude")}), 4326)::geography END`;
 
-/** A number of the approximate location kept beside the coordinates (comparable-location.service), or NULL. */
-const approximateCoordinate = (name: string) =>
-  Prisma.sql`CASE WHEN jsonb_typeof(c."JUbicacionSnapshot"->'approximate'->${name}) = 'number' THEN (c."JUbicacionSnapshot"->'approximate'->>${name})::float8 END`;
+/**
+ * The firm's temporary answer of the geocoder for the capture `c`
+ * (comparable-location.service: a custom field, never the comparable), while
+ * younger than 30 days (Google's terms); NULL when missing or expired.
+ */
+export const freshApproximateEntry = (organizationId: number) => Prisma.sql`(SELECT entry.value
+  FROM "devpware_campos_personalizados" cache
+    CROSS JOIN LATERAL (SELECT cache."JConfiguracion"->'items'->(c."UIdentificadorPublico"::text) AS value) entry
+  WHERE cache."IdOrganizacion" = ${organizationId} AND cache."SClave" = ${APPROXIMATE_CACHE_FIELD_KEY} AND cache."DFechaEliminacion" IS NULL
+    AND CASE WHEN entry.value->>'geocodedAt' ~ '^\\d{4}-\\d{2}-\\d{2}T[0-9:.]+Z$' THEN (entry.value->>'geocodedAt')::timestamptz END
+      > now() - make_interval(days => ${APPROXIMATE_TTL_DAYS}::int)
+  LIMIT 1)`;
 
-/** Where the address of a comparable without a pin falls, as the geocoder answered it once (V8.13); NULL when unknown. */
-export const APPROXIMATE_POINT = Prisma.sql`CASE WHEN ${approximateCoordinate("latitude")} BETWEEN -90 AND 90 AND ${approximateCoordinate("longitude")} BETWEEN -180 AND 180
-  THEN ST_SetSRID(ST_MakePoint(${approximateCoordinate("longitude")}, ${approximateCoordinate("latitude")}), 4326)::geography END`;
+/** Where the address of a comparable without a pin falls, from the fresh cached answer (V8.13); NULL when unknown. */
+export function approximatePoint(organizationId: number) {
+  const entry = freshApproximateEntry(organizationId);
+  const coordinate = (name: string) => Prisma.sql`CASE WHEN jsonb_typeof(${entry}->${name}) = 'number' THEN (${entry}->>${name})::float8 END`;
+  return Prisma.sql`CASE WHEN ${coordinate("latitude")} BETWEEN -90 AND 90 AND ${coordinate("longitude")} BETWEEN -180 AND 180
+    THEN ST_SetSRID(ST_MakePoint(${coordinate("longitude")}, ${coordinate("latitude")}), 4326)::geography END`;
+}
 
 /** Where the maps draw a comparable: its pin, else its approximate location. */
-export const MAP_POINT = Prisma.sql`COALESCE(${COMPARABLE_POINT}, ${APPROXIMATE_POINT})`;
+export const mapPoint = (organizationId: number) => Prisma.sql`COALESCE(${COMPARABLE_POINT}, ${approximatePoint(organizationId)})`;
 
 /** The type of construction of the snapshot, unaccented, in lowercase and trimmed: what the kinds of before are read from. */
 const CONSTRUCTION_TYPE_TEXT = Prisma.sql`unaccent(lower(btrim(COALESCE(c."JPropiedadSnapshot"->>'constructionType', ''))))`;

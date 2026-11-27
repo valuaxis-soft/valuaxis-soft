@@ -145,9 +145,18 @@ test("V8.13 (08:40): a comparable without a pin is located roughly by its addres
       { address: `${street} 10, Bugambilias, 45999 Villa Inventada, Jal., México`, point: [20.6, -103.45], precision: "RANGE_INTERPOLATED" },
     ];
   };
+  // An answer of 31 days ago (Google's terms allow 30): neither the maps nor the card use it, and it is asked again.
+  const monthAgo = new Date(Date.now() - 31 * 24 * 60 * 60 * 1000);
+  assert.deepEqual(await locateComparablePins(fixture.organizationId, params, { geocoder, now: monthAgo }), { pinned: 0, approximated: 1 });
+  const stale = await listComparablePins(fixture.organizationId, params, { withThumbnails: false });
+  assert.deepEqual({ pins: stale.pins.length, toLocate: stale.toLocate }, { pins: 0, toLocate: 1 });
+  assert.equal((await getComparableCard(rent.id, fixture.organizationId)).location, null);
   assert.deepEqual(await locateComparablePins(fixture.organizationId, params, { geocoder }), { pinned: 0, approximated: 1 });
-  assert.equal(asked.length, 1);
-  assert.match(asked[0], /45999 Villa Inventada, Jalisco, México$/);
+  assert.equal(asked.length, 2);
+  assert.match(asked[1], /45999 Villa Inventada, Jalisco, México$/);
+  // Google's answer never goes into the comparable: its snapshot keeps only the valuer's coordinates.
+  const row = await prisma.comparableAvaluo.findFirstOrThrow({ where: { UIdentificadorPublico: rent.id }, select: { JUbicacionSnapshot: true } });
+  assert.deepEqual(row.JUbicacionSnapshot, { latitude: null, longitude: null });
 
   const after = await listComparablePins(fixture.organizationId, params, { withThumbnails: false });
   assert.deepEqual(after.pins.map((pin) => [pin.lat, pin.lon, pin.approximate]), [[20.6, -103.45, true]], "the answer in its postal code and municipality");
@@ -159,7 +168,7 @@ test("V8.13 (08:40): a comparable without a pin is located roughly by its addres
   const card = await getComparableCard(rent.id, fixture.organizationId);
   assert.equal(card.location?.approximate, true);
   assert.deepEqual(await locateComparable(fixture.organizationId, rent.id, { geocoder }), { location: card.location });
-  assert.equal(asked.length, 1);
+  assert.equal(asked.length, 2);
 
   // Saved again with the same address it keeps it; a pin replaces it.
   const { id: _id, reference: _reference, photos: _photos, screenshot: _screenshot, review: _review, updatedOn: _updated, folio: _folio, factors: _factors, ...values } = rent;

@@ -17,7 +17,7 @@ import { comparableValidity } from "@/features/valuations/calculation/comparable
 import { isRentComparableType, type ComparableType } from "@/features/valuations/calculation/market-types";
 import { LATEST_FROM, comparableBaseConditions, latestCapturesCte } from "@/features/valuations/comparable-base/comparable-base.service";
 import type { ComparableListParams } from "@/features/valuations/comparable-base/comparable-list-params";
-import { APPROXIMATE_POINT, AREA, COMPARABLE_POINT, MAP_POINT } from "@/features/valuations/comparable-search/own-base-sql";
+import { AREA, COMPARABLE_POINT, approximatePoint, freshApproximateEntry, mapPoint } from "@/features/valuations/comparable-search/own-base-sql";
 import { LOCATE_BATCH, locateCaptures, type Geocoder, type UnlocatedCapture } from "@/features/valuations/comparable-base/comparable-location.service";
 import { prisma } from "@/infrastructure/database/prisma-client";
 import { stableDownloadUrl } from "@/infrastructure/storage/stable-url";
@@ -53,14 +53,14 @@ const jsonNumber = (path: string) =>
   Prisma.sql`CASE WHEN jsonb_typeof(c."JPropiedadSnapshot"->${path}) = 'number' THEN (c."JPropiedadSnapshot"->>${path})::numeric END`;
 
 /** The same columns the list reads, with the point split back into latitude and longitude. */
-const PIN_COLUMNS = Prisma.sql`
+const pinColumns = (organizationId: number) => Prisma.sql`
   c."UIdentificadorPublico"::text AS "id",
   c."organizationId",
   p."IFolioComparable" AS "folio",
   t."SClave" AS "type",
   p."SNombre" AS "propertyName",
-  ST_Y(${MAP_POINT}::geometry) AS "lat",
-  ST_X(${MAP_POINT}::geometry) AS "lon",
+  ST_Y(${mapPoint(organizationId)}::geometry) AS "lat",
+  ST_X(${mapPoint(organizationId)}::geometry) AS "lon",
   (${COMPARABLE_POINT} IS NULL) AS "approximate",
   ${AREA} AS "area",
   COALESCE(c."NSuperficieTerrenoCapturada", ${jsonNumber("landArea")}) AS "landArea",
@@ -143,18 +143,18 @@ export async function listComparablePins(organizationId: number, params: Compara
   const [counts] = await prisma.$queryRaw<Array<{ located: bigint; approximate: bigint; unlocated: bigint; pending: bigint }>>(Prisma.sql`
     ${latestCapturesCte(organizationId)}
     SELECT count(*) FILTER (WHERE ${COMPARABLE_POINT} IS NOT NULL) AS "located",
-      count(*) FILTER (WHERE ${COMPARABLE_POINT} IS NULL AND ${APPROXIMATE_POINT} IS NOT NULL) AS "approximate",
-      count(*) FILTER (WHERE ${MAP_POINT} IS NULL) AS "unlocated",
-      count(*) FILTER (WHERE ${COMPARABLE_POINT} IS NULL AND NOT (c."JUbicacionSnapshot" ? 'approximate')) AS "pending"
+      count(*) FILTER (WHERE ${COMPARABLE_POINT} IS NULL AND ${approximatePoint(organizationId)} IS NOT NULL) AS "approximate",
+      count(*) FILTER (WHERE ${mapPoint(organizationId)} IS NULL) AS "unlocated",
+      count(*) FILTER (WHERE ${COMPARABLE_POINT} IS NULL AND ${freshApproximateEntry(organizationId)} IS NULL) AS "pending"
     ${LATEST_FROM}
     WHERE c."organizationId" = ${organizationId} ${filters}
   `);
   // The pins and, without one, the approximate locations (V8.13: «me debe mostrar la proximidad en el mapa»).
   const rows = await prisma.$queryRaw<PinRow[]>(Prisma.sql`
     ${latestCapturesCte(organizationId)}
-    SELECT ${PIN_COLUMNS}, NULL::float8 AS "distance"
+    SELECT ${pinColumns(organizationId)}, NULL::float8 AS "distance"
     ${LATEST_FROM}
-    WHERE c."organizationId" = ${organizationId} AND ${MAP_POINT} IS NOT NULL ${filters}
+    WHERE c."organizationId" = ${organizationId} AND ${mapPoint(organizationId)} IS NOT NULL ${filters}
     ORDER BY c."DFechaActualizacionDatos" DESC, c."IdComparableAvaluo" DESC
     LIMIT ${options.maxPins ?? MAX_PINS}
   `);
@@ -178,17 +178,17 @@ export async function listComparablePins(organizationId: number, params: Compara
 export async function locateComparablePins(
   organizationId: number,
   params: ComparableListParams,
-  options: { geocoder: Geocoder; allow?: () => boolean; today?: string },
+  options: { geocoder: Geocoder; allow?: () => boolean; today?: string; now?: Date },
 ) {
   const today = options.today ?? todayInMexico();
   const firmMonths = await firmComparableMonths(prisma, organizationId);
   const where = comparableBaseConditions(params, today, firmMonths);
   const rows = await prisma.$queryRaw<Array<UnlocatedCapture & { organizationId: number }>>(Prisma.sql`
     ${latestCapturesCte(organizationId)}
-    SELECT c."IdComparableAvaluo" AS "id", c."organizationId", p."IFolioComparable" AS "folio",
+    SELECT c."IdComparableAvaluo" AS "id", c."UIdentificadorPublico"::text AS "publicId", c."organizationId", p."IFolioComparable" AS "folio",
       c."JDireccionSnapshot" AS "address", c."JUbicacionSnapshot" AS "coordinates"
     ${LATEST_FROM}
-    WHERE c."organizationId" = ${organizationId} AND ${COMPARABLE_POINT} IS NULL AND NOT (c."JUbicacionSnapshot" ? 'approximate')
+    WHERE c."organizationId" = ${organizationId} AND ${COMPARABLE_POINT} IS NULL AND ${freshApproximateEntry(organizationId)} IS NULL
       ${where.length ? Prisma.sql`AND ${Prisma.join(where, " AND ")}` : Prisma.empty}
     ORDER BY c."DFechaActualizacionDatos" DESC, c."IdComparableAvaluo" DESC
     LIMIT ${LOCATE_BATCH}
@@ -215,9 +215,9 @@ export async function comparablesAround(
   const point = Prisma.sql`ST_SetSRID(ST_MakePoint(${center[1]}::float8, ${center[0]}::float8), 4326)::geography`;
   const rows = await prisma.$queryRaw<PinRow[]>(Prisma.sql`
     ${latestCapturesCte(organizationId)}
-    SELECT ${PIN_COLUMNS}, ST_Distance(${MAP_POINT}, ${point}) AS "distance"
+    SELECT ${pinColumns(organizationId)}, ST_Distance(${mapPoint(organizationId)}, ${point}) AS "distance"
     ${LATEST_FROM}
-    WHERE c."organizationId" = ${organizationId} AND ST_DWithin(${MAP_POINT}, ${point}, ${radius}::float8)
+    WHERE c."organizationId" = ${organizationId} AND ST_DWithin(${mapPoint(organizationId)}, ${point}, ${radius}::float8)
       ${where.length ? Prisma.sql`AND ${Prisma.join(where, " AND ")}` : Prisma.empty}
     ORDER BY "distance" ASC, p."IFolioComparable" ASC NULLS LAST
     LIMIT ${RADIUS_MAX_HITS}

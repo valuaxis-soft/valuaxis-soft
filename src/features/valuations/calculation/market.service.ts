@@ -45,7 +45,7 @@ import { addMonths, comparableDataChanged } from "./comparable-validity";
 import { PENDING_REVIEW, isBuiltInStatus, reviewStatusOf, type ComparableReviewDto } from "./comparable-review";
 import { checklistFor, labelsForReview, reviewStatusKeySchema } from "./comparable-review-checklist";
 import { FIRM_BASE_FROM, firmBaseCondition } from "../comparable-search/own-base-sql";
-import { keptApproximate, pinOf, shareComparablePin } from "../comparable-base/comparable-location.service";
+import { approximateQueryOf, forgetApproximate, pinOf, shareComparablePin } from "../comparable-base/comparable-location.service";
 import { getComparableReviewSettings } from "@/features/firm/comparable-review-settings.service";
 import type { ComparableBulkReviewPayload, ComparableInputPayload, ComparableReviewPayload, MarketSettingsPayload } from "./market-schemas";
 import {
@@ -886,11 +886,8 @@ export function snapshots(payload: ComparableInputPayload, formulas: CapturedFor
     JPublicacionSnapshot: publication as Prisma.InputJsonValue,
     // The single line stays what the dictamen prints; the parts travel beside it.
     JDireccionSnapshot: { location: payload.location, ...(address ?? {}) } as Prisma.InputJsonValue,
-    // Typed by hand until a map places them; without them, the approximate location of the same address stays (V8.13).
-    JUbicacionSnapshot: {
-      ...coordinates,
-      ...keptApproximate(storedRows.coordinates, coordinates, { location: payload.location, ...(address ?? {}) }),
-    } as Prisma.InputJsonValue,
+    // Typed by hand until a map places them: the valuer's own data. Nothing derived from Google is kept here (V8.13).
+    JUbicacionSnapshot: coordinates as Prisma.InputJsonValue,
   };
 }
 
@@ -1380,6 +1377,7 @@ export async function updateBaseCapture(
   if (pin && source.IdOrganizacion !== null && (pin.latitude !== previous.latitude || pin.longitude !== previous.longitude)) {
     await shareComparablePin(tx, source.IdOrganizacion, source.propiedad.IFolioComparable, pin, source.IdComparableAvaluo);
   }
+  if (source.IdOrganizacion !== null) await forgetApproximate(tx, source.IdOrganizacion, source.UIdentificadorPublico);
 }
 
 /**
@@ -1443,11 +1441,16 @@ export async function updateComparable(publicId: string, user: AuthUser, compara
     await replaceFactors(tx, current.IdComparableAvaluo, payload);
     // V8.13: the pin placed here is the comparable's in the whole firm, also in the search of another valuation.
     const saved = await tx.comparableAvaluo.findUniqueOrThrow({
-      where: { IdComparableAvaluo: current.IdComparableAvaluo }, select: { JUbicacionSnapshot: true, propiedad: { select: { IFolioComparable: true } } },
+      where: { IdComparableAvaluo: current.IdComparableAvaluo },
+      select: { JUbicacionSnapshot: true, JDireccionSnapshot: true, propiedad: { select: { IFolioComparable: true } } },
     });
     const pin = pinOf(saved.JUbicacionSnapshot);
     if (pin && (pin.latitude !== previous.latitude || pin.longitude !== previous.longitude)) {
       await shareComparablePin(tx, user.organizationId, saved.propiedad.IFolioComparable, pin, current.IdComparableAvaluo);
+    }
+    // Another address (or a pin): the temporary approximate answer of the old one no longer applies.
+    if (pin || approximateQueryOf(saved.JDireccionSnapshot) !== approximateQueryOf(current.JDireccionSnapshot)) {
+      await forgetApproximate(tx, user.organizationId, current.UIdentificadorPublico);
     }
     await recompute(tx, versionId, type);
   });

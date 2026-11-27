@@ -11,7 +11,7 @@ import { REVIEW_TONES, reviewMarketOrder } from "../src/features/valuations/calc
 import { reviewStatusListSchema } from "../src/features/valuations/calculation/comparable-review-checklist";
 import { machineryOfferRows } from "../src/features/valuations/calculation/machinery-export";
 import { emptyOffer } from "../src/features/valuations/calculation/machinery-types";
-import { approximateQueryOf, keptApproximate, locationOf } from "../src/features/valuations/comparable-base/comparable-location.service";
+import { APPROXIMATE_TTL_DAYS, approximateQueryOf, freshApproximate, locationOf } from "../src/features/valuations/comparable-base/comparable-location.service";
 import { FUZZY_TOKEN_MIN, searchTokens, tokenSpellings } from "../src/features/valuations/comparable-search/normalize";
 import { REVIEW_TONE_STYLES } from "../src/features/valuations/components/calculation/review-status-style";
 
@@ -50,17 +50,26 @@ test("V8.13 (08:40): the card shows the pin, else the approximate location of th
   const address = { location: "Calle Inventada 10, Villa Inventada", street: "Inventada", number: "10", municipality: "Villa Inventada", state: "Jalisco" };
   const query = approximateQueryOf(address);
   assert.equal(query, "Inventada 10, Villa Inventada, Jalisco, México");
-  const approximate = { query, latitude: 20.6, longitude: -103.4, address: "Inventada 10, Villa Inventada" };
-  assert.deepEqual(locationOf({ latitude: 20.7, longitude: -103.5, approximate }, address), { latitude: 20.7, longitude: -103.5, approximate: false, address: null });
-  assert.deepEqual(locationOf({ latitude: null, longitude: null, approximate }, address), { latitude: 20.6, longitude: -103.4, approximate: true, address: approximate.address });
-  assert.equal(locationOf({ latitude: null, longitude: null, approximate }, { ...address, number: "12" }), null, "another address: looked up again");
-  assert.equal(locationOf({ latitude: null, longitude: null, approximate: { query, latitude: null, longitude: null, address: null } }, address), null, "not found");
+  const now = new Date("2026-11-27T18:00:00.000Z");
+  const cached = { query, latitude: 20.6, longitude: -103.4, address: "Inventada 10, Villa Inventada", geocodedAt: "2026-11-20T18:00:00.000Z" };
+  const noPin = { latitude: null, longitude: null };
+  assert.deepEqual(locationOf({ latitude: 20.7, longitude: -103.5 }, address, cached, now), { latitude: 20.7, longitude: -103.5, approximate: false, address: null }, "the valuer's pin first");
+  assert.deepEqual(locationOf(noPin, address, cached, now), { latitude: 20.6, longitude: -103.4, approximate: true, address: cached.address });
+  assert.equal(locationOf(noPin, { ...address, number: "12" }, cached, now), null, "another address: looked up again");
+  assert.equal(locationOf(noPin, address, { ...cached, latitude: null, longitude: null }, now), null, "not found");
+  assert.equal(locationOf(noPin, address, null, now), null);
+});
 
-  // Saved again: the approximate location stays with the same address, goes with another one or with a pin.
-  const stored = { latitude: null, longitude: null, approximate };
-  assert.deepEqual(keptApproximate(stored, { latitude: null, longitude: null }, address), { approximate });
-  assert.deepEqual(keptApproximate(stored, { latitude: null, longitude: null }, { ...address, number: "12" }), {});
-  assert.deepEqual(keptApproximate(stored, { latitude: 20.7, longitude: -103.5 }, address), {});
+test("V8.13: Google's answer is a temporary cache: older than 30 days it is not used (Google Maps Platform terms)", () => {
+  const address = { location: "Calle Inventada 10, Villa Inventada", street: "Inventada", number: "10", municipality: "Villa Inventada", state: "Jalisco" };
+  const cached = { query: approximateQueryOf(address), latitude: 20.6, longitude: -103.4, address: null, geocodedAt: "2026-10-01T12:00:00.000Z" };
+  const noPin = { latitude: null, longitude: null };
+  assert.equal(APPROXIMATE_TTL_DAYS, 30);
+  assert.ok(freshApproximate(cached, new Date("2026-10-30T12:00:00.000Z")), "29 days: still used");
+  assert.equal(freshApproximate(cached, new Date("2026-11-01T12:00:00.000Z")), null, "31 days: expired");
+  assert.equal(locationOf(noPin, address, cached, new Date("2026-11-01T12:00:00.000Z")), null, "an expired answer is not shown");
+  assert.equal(freshApproximate({ ...cached, geocodedAt: undefined }, new Date("2026-10-02T12:00:00.000Z")), null, "without its date it is not trusted");
+  assert.equal(freshApproximate({ ...cached, geocodedAt: "ayer" }, new Date("2026-10-02T12:00:00.000Z")), null);
 });
 
 test("V8.13 (05:31): machinery exports its offers to Excel as the other markets do; contact only for who can edit", () => {
