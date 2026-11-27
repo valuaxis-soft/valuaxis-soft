@@ -2,7 +2,7 @@
 
 /// <reference types="google.maps" />
 
-import { ChevronDown, Crosshair, ExternalLink, Loader2, Search } from "lucide-react";
+import { ChevronDown, Crosshair, Expand, ExternalLink, Loader2, Search, Shrink } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
@@ -73,7 +73,14 @@ export interface ComparableBaseMapProps {
   valuation?: { id: string; type: ComparableType; readOnly: boolean; onAdded?: (calculation: MarketCalculationDto) => void };
   /** In /comparables, for who may edit valuations: the card of a pin offers to add it to a valuation the appraiser picks (MAP-09). */
   canAddToValuations?: boolean;
+  /** In a dialog: the map takes the whole width and its panel goes under it (V8.13: «más ancho… que tuviera el ancho de esto»). */
+  stacked?: boolean;
+  /** Comparables without a pin are located by their address (approximate) when the map loads; only who may edit valuations. */
+  locateByAddress?: boolean;
 }
+
+/** Rounds of «ubicar por dirección» a map asks for at most when it loads; each locates up to 20 comparables. */
+const LOCATE_ROUNDS = 5;
 
 /**
  * The firm's base of comparables on Google Maps (etapa 3 of the maps quote):
@@ -82,7 +89,14 @@ export interface ComparableBaseMapProps {
  * the same filters as the list; "Buscar alrededor de" with a radius; and the
  * subject of each valuation of the firm under "Avalúos".
  */
-export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLayers, valuation, canAddToValuations = false }: ComparableBaseMapProps) {
+export function ComparableBaseMap({
+  googleMaps, query, unlocatedHref, initialLayers, valuation, canAddToValuations = false, stacked = false, locateByAddress = true,
+}: ComparableBaseMapProps) {
+  /** «Ver mapa grande» (V8.13, 11:27): the map almost as tall as the screen. */
+  const [big, setBig] = useState(false);
+  /** Bumped to read the pins again after comparables were located by their address. */
+  const [reload, setReload] = useState(0);
+  const locateRounds = useRef(new Map<string, number>());
   const containerRef = useRef<HTMLDivElement>(null);
   const partsRef = useRef<GoogleParts | null>(null);
   const [mode, setMode] = useState<MapMode>("loading");
@@ -139,11 +153,23 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
         if (cancelled) return;
         setData(dto);
         setLoadError(null);
+        // V8.13 (08:40): comparables without a pin show where their address falls; the server looks them up once.
+        const rounds = locateRounds.current.get(query) ?? 0;
+        if (!locateByAddress || !dto.toLocate || rounds >= LOCATE_ROUNDS) return;
+        locateRounds.current.set(query, rounds + 1);
+        api.maps.locateComparables(query).then(
+          (located) => {
+            if (cancelled) return;
+            if (located.pinned + located.approximated > 0) setReload((current) => current + 1);
+            else locateRounds.current.set(query, LOCATE_ROUNDS);
+          },
+          () => locateRounds.current.set(query, LOCATE_ROUNDS),
+        );
       },
       (error: unknown) => { if (!cancelled) setLoadError(errorMessage(error, "No se pudo cargar el mapa de comparables.")); },
     );
     return () => { cancelled = true; };
-  }, [query]);
+  }, [query, reload, locateByAddress]);
 
   useEffect(() => {
     if (tab !== "avaluos" || valuations) return;
@@ -244,11 +270,15 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
       if (cluster.items.length === 1) {
         const pin = cluster.items[0];
         const style = pinStyle(pin.type, pin.expired);
+        const color = baseMapLayer(pin.type).color;
         const marker = new google.maps.Marker({
           map: parts.map,
           position: { lat: pin.lat, lng: pin.lon },
-          title: `${formatComparableId(pin.folio) ?? "Comparable"} · ${pin.location}`,
-          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: style.fill, fillOpacity: 1, strokeColor: style.stroke, strokeWeight: 3 },
+          title: `${formatComparableId(pin.folio) ?? "Comparable"} · ${pin.location}${pin.approximate ? " (ubicación aproximada por su dirección)" : ""}`,
+          // V8.13: where its address falls, a larger translucent circle, never mistaken for a pin.
+          icon: pin.approximate
+            ? { path: google.maps.SymbolPath.CIRCLE, scale: 11, fillColor: color, fillOpacity: 0.3, strokeColor: color, strokeWeight: 2 }
+            : { path: google.maps.SymbolPath.CIRCLE, scale: 7, fillColor: style.fill, fillOpacity: 1, strokeColor: style.stroke, strokeWeight: 3 },
         });
         marker.addListener("mouseover", () => {
           parts.hover.setContent(comparablePinCardHtml(pin));
@@ -490,14 +520,24 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
   const hidden = Math.max(0, (data?.located ?? 0) - (data?.pins.length ?? 0));
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+    <div className={cn("grid gap-3", !stacked && "lg:grid-cols-[minmax(0,1fr)_320px]")} data-base-map-layout={stacked ? "stacked" : "side"}>
       <div className="grid gap-2">
         {mode === "failed" ? (
           <p className="text-sm text-destructive" role="alert">El mapa no se pudo mostrar: {mapProblem}.</p>
         ) : null}
         {loadError ? <p className="text-sm text-destructive" role="alert">{loadError}</p> : null}
+        <div className="flex justify-end">
+          <Button type="button" size="sm" variant="outline" aria-pressed={big} onClick={() => setBig((current) => !current)} data-map-expand="">
+            {big ? <Shrink data-icon="inline-start" /> : <Expand data-icon="inline-start" />} {big ? "Ver mapa normal" : "Ver mapa grande"}
+          </Button>
+        </div>
         <div className="relative overflow-hidden rounded-lg border">
-          <div ref={containerRef} role="application" aria-label="Mapa de la base de comparables" className="h-[420px] w-full sm:h-[560px]" />
+          <div
+            ref={containerRef}
+            role="application"
+            aria-label="Mapa de la base de comparables"
+            className={cn("w-full transition-[height] duration-200 motion-reduce:transition-none", big ? "h-[80dvh] min-h-105" : "h-105 sm:h-140")}
+          />
           {mode === "loading" ? (
             <div className="absolute inset-0 flex items-center justify-center bg-muted/60 text-sm text-muted-foreground">
               <Loader2 className="mr-2 size-4 animate-spin" /> Cargando el mapa…
@@ -510,7 +550,8 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
           ) : null}
         </div>
         <p className="text-[11px] text-muted-foreground">
-          Pin lleno: comparable vigente; pin hueco: vencido. Los números agrupan comparables cercanos; tócalos para acercarte.
+          Pin lleno: comparable vigente; pin hueco: vencido; círculo translúcido: ubicación aproximada por su dirección (sin pin todavía).
+          Los números agrupan comparables cercanos; tócalos para acercarte.
           {hidden ? ` Se muestran los ${data?.pins.length.toLocaleString("es-MX")} más recientes de ${data?.located.toLocaleString("es-MX")} con ubicación; afina los filtros para ver el resto.` : ""}
         </p>
       </div>
@@ -551,6 +592,7 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
               {data ? (
                 <p className="text-xs text-muted-foreground">
                   {data.located.toLocaleString("es-MX")} con ubicación
+                  {data.approximate ? ` · ${data.approximate.toLocaleString("es-MX")} aproximada${data.approximate === 1 ? "" : "s"}` : ""}
                   {data.unlocated ? (
                     <>
                       {" · "}
@@ -650,7 +692,7 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
                       <span className="min-w-0 flex-1">
                         <span className="font-mono text-xs font-medium">{formatComparableId(hit.folio) ?? "Sin número"}</span> · {formatDistance(hit.distance)}
                         <small className="block text-muted-foreground">
-                          {baseMapLayer(hit.type).title} · {hit.expired ? "vencido" : "vigente"}
+                          {baseMapLayer(hit.type).title} · {hit.expired ? "vencido" : "vigente"}{hit.approximate ? " · ubicación aproximada" : ""}
                         </small>
                       </span>
                       <span className="font-mono text-xs tabular-nums">{hit.price === null ? "—" : formatMoney(hit.price)}</span>
@@ -718,6 +760,7 @@ export function ComparableBaseMap({ googleMaps, query, unlocatedHref, initialLay
             <span className="font-semibold tabular-nums">{pinPriceLine(selected)}</span>
             {pinFeatures(selected) ? <span className="text-xs text-[#5a6b7b]">{pinFeatures(selected)}</span> : null}
             <span className="text-xs text-[#5a6b7b]">{selected.location}</span>
+            {selected.approximate ? <span className="text-xs font-medium text-[#8a5a00]">Ubicación aproximada por su dirección: pon el pin en su ficha.</span> : null}
             <span className="flex items-center gap-2 text-xs text-[#5a6b7b]">
               <ValidityBadge validity={selected} /> hasta {formatDay(selected.validUntil)}
             </span>

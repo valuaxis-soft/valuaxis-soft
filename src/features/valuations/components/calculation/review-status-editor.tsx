@@ -6,8 +6,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
-import { REVIEW_TONES, REVIEW_TONE_LABELS, type ReviewStatusItem, type ReviewTone } from "@/features/valuations/calculation/comparable-review";
+import { REVIEW_TONES, REVIEW_TONE_LABELS, type ReviewStatusItem } from "@/features/valuations/calculation/comparable-review";
 import { MAX_REVIEW_STATUSES, newStatusKey, reviewStatusListSchema } from "@/features/valuations/calculation/comparable-review-checklist";
 import { api } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
@@ -51,23 +50,42 @@ export function ReviewStatusEditor(props: { statuses: ReviewStatusItem[]; onSave
       <div>
         <h3 className="text-sm font-semibold">Estados de revisión del despacho</h3>
         <p className="text-xs text-muted-foreground">
-          Agrega, cambia el nombre o quita estados; valen para todos los comparables del despacho. Quitar un estado no cambia los comparables que lo tienen:
+          Agrega, cambia el nombre o el color, o quita estados; valen para todos los comparables del despacho y su color se ve en cada etiqueta. Quitar un estado no cambia los comparables que lo tienen:
           lo conservan hasta que les pongas otro. «Sin revisar» va primero y no se quita.
         </p>
       </div>
       <ul className="grid gap-1.5">
         {draft.map((item, index) => (
-          <li key={item.key} className="grid grid-cols-[auto_minmax(0,1fr)_minmax(0,8rem)_auto] items-center gap-2" data-review-status-row={item.key}>
-            <span className={cn("size-3 rounded-full", REVIEW_TONE_STYLES[item.tone].solid)} aria-hidden="true" />
+          <li key={item.key} className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-2 gap-y-1.5 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)_auto]" data-review-status-row={item.key}>
             <Input
               aria-label={`Nombre del estado ${index + 1}`}
               maxLength={60}
               value={item.label}
               onChange={(event) => edit(index, { label: event.target.value })}
             />
-            <NativeSelect className="w-full" aria-label={`Color del estado ${item.label || index + 1}`} value={item.tone} onChange={(event) => edit(index, { tone: event.target.value as ReviewTone })}>
-              {REVIEW_TONES.map((tone) => <NativeSelectOption key={tone} value={tone}>{REVIEW_TONE_LABELS[tone]}</NativeSelectOption>)}
-            </NativeSelect>
+            {/* V8.13 (12:32): the colour of the label, picked from swatches; the chip beside shows how it reads. */}
+            <div className="order-last col-span-2 flex flex-wrap items-center gap-1.5 sm:order-none sm:col-span-1" role="radiogroup" aria-label={`Color del estado ${item.label || index + 1}`}>
+              {REVIEW_TONES.map((tone) => (
+                <button
+                  key={tone}
+                  type="button"
+                  role="radio"
+                  aria-checked={item.tone === tone}
+                  aria-label={REVIEW_TONE_LABELS[tone]}
+                  title={REVIEW_TONE_LABELS[tone]}
+                  data-review-tone={tone}
+                  onClick={() => edit(index, { tone })}
+                  className={cn(
+                    "size-6 rounded-full border-2 border-background shadow-[0_0_0_1px_var(--border)] transition-transform duration-150 hover:scale-110 focus-visible:outline-2 focus-visible:outline-ring motion-reduce:transition-none",
+                    REVIEW_TONE_STYLES[tone].solid,
+                    item.tone === tone && "shadow-[0_0_0_2px_var(--foreground)]",
+                  )}
+                />
+              ))}
+              <span className={cn("ml-1 rounded-sm px-1.5 py-0.5 text-xs font-medium", REVIEW_TONE_STYLES[item.tone].solid)} data-review-status-preview="">
+                {item.label.trim() || "Sin nombre"}
+              </span>
+            </div>
             <Button
               type="button"
               size="icon-sm"

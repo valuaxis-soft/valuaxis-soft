@@ -6,8 +6,8 @@ import type { ReviewTone } from "@/features/valuations/calculation/comparable-re
  * tokens, as the valuation states (docs/DISENO.md): grey for still to review,
  * green for verified, navy for verified but no longer current, ochre for a
  * comparable to observe and red for rejected. A state the firm adds takes one
- * of these five (V8.12: «está muy bonito así como está»). The label always
- * says the state.
+ * of these or of five more of the palette (V8.13: «definir el color de la
+ * etiqueta»). The label always says the state.
  */
 export const REVIEW_TONE_STYLES: Record<ReviewTone, { solid: string; row: string; text: string }> = {
   gris: {
@@ -34,5 +34,31 @@ export const REVIEW_TONE_STYLES: Record<ReviewTone, { solid: string; row: string
     solid: "bg-destructive text-white",
     row: "border-l-4 border-l-destructive/70 bg-destructive/5",
     text: "text-destructive",
+  },
+  // V8.13: five more of the palette for the states the firm adds.
+  violeta: {
+    solid: "bg-chart-4 text-white",
+    row: "border-l-4 border-l-chart-4 bg-chart-4/10",
+    text: "text-chart-4",
+  },
+  naranja: {
+    solid: "bg-chart-5 text-white",
+    row: "border-l-4 border-l-chart-5 bg-chart-5/10",
+    text: "text-chart-5",
+  },
+  celeste: {
+    solid: "bg-brand-sky text-foreground",
+    row: "border-l-4 border-l-brand-sky bg-brand-sky/10",
+    text: "text-brand",
+  },
+  "azul-vivo": {
+    solid: "bg-brand text-brand-foreground",
+    row: "border-l-4 border-l-brand bg-brand/10",
+    text: "text-brand",
+  },
+  marino: {
+    solid: "bg-ink text-ink-foreground",
+    row: "border-l-4 border-l-ink bg-ink/5",
+    text: "text-ink",
   },
 };

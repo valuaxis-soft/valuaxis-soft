@@ -313,6 +313,23 @@ export const comparableReviewSchema = z.object({
 
 export type ComparableReviewPayload = z.infer<typeof comparableReviewSchema>;
 
+/** Comparables a review in bulk takes at once: more than any valuation has. */
+export const MAX_BULK_REVIEW = 200;
+
+/**
+ * «Revisión en lote» (V8.13): the comparables chosen, the state they all
+ * take, whether every check of the list is marked, and notes for all (left
+ * out, each keeps its own).
+ */
+export const comparableBulkReviewSchema = z.object({
+  comparableIds: z.array(z.uuid("Comparable no encontrado")).min(1, "Elige al menos un comparable.").max(MAX_BULK_REVIEW, `Se revisan hasta ${MAX_BULK_REVIEW} comparables a la vez.`),
+  status: reviewStatusKeySchema,
+  markAll: z.boolean().default(false),
+  notes: text(2000).optional(),
+});
+
+export type ComparableBulkReviewPayload = z.infer<typeof comparableBulkReviewSchema>;
+
 /** «Encuadre» and «Zoom» of a comparable's photo; null gives back the default (whole and centered). */
 export const comparablePhotoFramingSchema = z.object({
   photoId: z.string().trim().min(1).max(80),

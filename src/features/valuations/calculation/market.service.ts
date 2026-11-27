@@ -43,10 +43,11 @@ import {
 } from "./comparable-card";
 import { addMonths, comparableDataChanged } from "./comparable-validity";
 import { PENDING_REVIEW, isBuiltInStatus, reviewStatusOf, type ComparableReviewDto } from "./comparable-review";
-import { labelsForReview, reviewStatusKeySchema } from "./comparable-review-checklist";
+import { checklistFor, labelsForReview, reviewStatusKeySchema } from "./comparable-review-checklist";
 import { FIRM_BASE_FROM, firmBaseCondition } from "../comparable-search/own-base-sql";
+import { keptApproximate, pinOf, shareComparablePin } from "../comparable-base/comparable-location.service";
 import { getComparableReviewSettings } from "@/features/firm/comparable-review-settings.service";
-import type { ComparableInputPayload, ComparableReviewPayload, MarketSettingsPayload } from "./market-schemas";
+import type { ComparableBulkReviewPayload, ComparableInputPayload, ComparableReviewPayload, MarketSettingsPayload } from "./market-schemas";
 import {
   COMPARABLE_TYPES,
   CUSTOM_FACTOR_KEY,
@@ -885,8 +886,11 @@ export function snapshots(payload: ComparableInputPayload, formulas: CapturedFor
     JPublicacionSnapshot: publication as Prisma.InputJsonValue,
     // The single line stays what the dictamen prints; the parts travel beside it.
     JDireccionSnapshot: { location: payload.location, ...(address ?? {}) } as Prisma.InputJsonValue,
-    // Typed by hand until a map places them.
-    JUbicacionSnapshot: coordinates as Prisma.InputJsonValue,
+    // Typed by hand until a map places them; without them, the approximate location of the same address stays (V8.13).
+    JUbicacionSnapshot: {
+      ...coordinates,
+      ...keptApproximate(storedRows.coordinates, coordinates, { location: payload.location, ...(address ?? {}) }),
+    } as Prisma.InputJsonValue,
   };
 }
 
@@ -1371,6 +1375,11 @@ export async function updateBaseCapture(
     },
   });
   await replaceFactors(tx, source.IdComparableAvaluo, payload);
+  // V8.13: a pin placed in the base reaches every capture of its number.
+  const pin = pinOf({ latitude: payload.latitude ?? null, longitude: payload.longitude ?? null });
+  if (pin && source.IdOrganizacion !== null && (pin.latitude !== previous.latitude || pin.longitude !== previous.longitude)) {
+    await shareComparablePin(tx, source.IdOrganizacion, source.propiedad.IFolioComparable, pin, source.IdComparableAvaluo);
+  }
 }
 
 /**
@@ -1432,6 +1441,14 @@ export async function updateComparable(publicId: string, user: AuthUser, compara
       },
     });
     await replaceFactors(tx, current.IdComparableAvaluo, payload);
+    // V8.13: the pin placed here is the comparable's in the whole firm, also in the search of another valuation.
+    const saved = await tx.comparableAvaluo.findUniqueOrThrow({
+      where: { IdComparableAvaluo: current.IdComparableAvaluo }, select: { JUbicacionSnapshot: true, propiedad: { select: { IFolioComparable: true } } },
+    });
+    const pin = pinOf(saved.JUbicacionSnapshot);
+    if (pin && (pin.latitude !== previous.latitude || pin.longitude !== previous.longitude)) {
+      await shareComparablePin(tx, user.organizationId, saved.propiedad.IFolioComparable, pin, current.IdComparableAvaluo);
+    }
     await recompute(tx, versionId, type);
   });
 }
@@ -1709,29 +1726,65 @@ export async function removeComparableScreenshot(publicId: string, user: AuthUse
  * The appraiser's review of a comparable in this valuation, with who made it
  * and when. It changes no calculation, so nothing is recomputed.
  */
+/** The review as it is stored: the state's name and colour and each check's name as the firm has them today, and who saved it. */
+function reviewSnapshotOf(
+  payload: ComparableReviewPayload, checklist: Awaited<ReturnType<typeof getComparableReviewSettings>>, user: AuthUser,
+): ReviewSnapshot {
+  // V8.12: deleting a state or a check later changes no comparable; the review keeps reading the same.
+  const status = reviewStatusOf(payload.status, checklist.statuses);
+  return {
+    status: payload.status,
+    statusLabel: status.label,
+    statusTone: status.tone,
+    checks: payload.checks,
+    labels: labelsForReview(payload.checks, checklist),
+    notes: payload.notes,
+    reviewedBy: user.name,
+    reviewedById: user.id,
+    reviewedAt: new Date().toISOString(),
+  };
+}
+
 export async function saveComparableReview(publicId: string, user: AuthUser, comparableId: string, payload: ComparableReviewPayload) {
   return prisma.$transaction(async (tx) => {
     const { versionId } = await writableVersion(tx, publicId, user);
     const current = await findComparable(tx, versionId, comparableId);
     const checklist = await getComparableReviewSettings(user.organizationId, tx);
-    // The state's name and colour as the firm has them today, kept with the review (V8.12: deleting a state changes no comparable).
-    const status = reviewStatusOf(payload.status, checklist.statuses);
-    const review: ReviewSnapshot = {
-      status: payload.status,
-      statusLabel: status.label,
-      statusTone: status.tone,
-      checks: payload.checks,
-      // The name of each check as the firm calls it today: the review reads the same after the list changes.
-      labels: labelsForReview(payload.checks, checklist),
-      notes: payload.notes,
-      reviewedBy: user.name,
-      reviewedById: user.id,
-      reviewedAt: new Date().toISOString(),
-    };
+    const review = reviewSnapshotOf(payload, checklist, user);
     await tx.comparableAvaluo.update({
       where: { IdComparableAvaluo: current.IdComparableAvaluo },
       data: { JRevision: review as Prisma.InputJsonValue },
     });
     return reviewOf(review as unknown as Prisma.JsonValue);
+  });
+}
+
+/**
+ * «Revisión en lote» (V8.13, 13:44 to 17:13: «seleccionar todos los de
+ * terreno en venta… marcar todas las casillas… el estatus… y guardar
+ * revisión», once): the comparables chosen take the same state and, with
+ * `markAll`, every check of the firm's list that applies to their market;
+ * each keeps its own notes unless notes are given. One transaction: all or none.
+ */
+export async function saveComparableReviews(publicId: string, user: AuthUser, payload: ComparableBulkReviewPayload) {
+  return prisma.$transaction(async (tx) => {
+    const { versionId } = await writableVersion(tx, publicId, user);
+    const checklist = await getComparableReviewSettings(user.organizationId, tx);
+    const rows = await tx.comparableAvaluo.findMany({
+      where: { UIdentificadorPublico: { in: payload.comparableIds }, IdVersionAvaluo: versionId, BIncluido: true },
+      select: { IdComparableAvaluo: true, UIdentificadorPublico: true, JRevision: true, tipoComparable: { select: { SClave: true } } },
+    });
+    if (rows.length !== new Set(payload.comparableIds).size) throw new ValuationWorkflowError("Algún comparable ya no está en el avalúo; vuelve a abrir la revisión.", 409);
+    const saved: Array<{ comparableId: string; review: ComparableReviewDto }> = [];
+    for (const row of rows) {
+      const before = reviewOf(row.JRevision);
+      const type = row.tipoComparable.SClave as ComparableType;
+      const kept = Object.fromEntries(Object.entries(before.checks).filter((entry): entry is [string, boolean] => typeof entry[1] === "boolean"));
+      const checks = payload.markAll ? { ...kept, ...Object.fromEntries(checklistFor(checklist, type).map((check) => [check.key, true])) } : kept;
+      const review = reviewSnapshotOf({ status: payload.status, checks, notes: payload.notes === undefined ? before.notes : payload.notes }, checklist, user);
+      await tx.comparableAvaluo.update({ where: { IdComparableAvaluo: row.IdComparableAvaluo }, data: { JRevision: review as Prisma.InputJsonValue } });
+      saved.push({ comparableId: row.UIdentificadorPublico, review: reviewOf(review as unknown as Prisma.JsonValue) });
+    }
+    return saved;
   });
 }

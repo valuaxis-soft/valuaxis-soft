@@ -64,6 +64,7 @@ import type { SubjectLocationInput } from "@/features/maps/subject-location";
 import type { SubjectLocationDto } from "@/features/maps/server/subject-location.service";
 import type { GeocodingResult } from "@/features/maps/server/geocoding.service";
 import type { ComparablePinsDto, RadiusHitDto, ValuationPinDto } from "@/features/maps/base-map/types";
+import type { ComparableLocationDto } from "@/features/valuations/comparable-base/comparable-location.service";
 import type { EditorImageDto } from "@/features/files/services/editor-image";
 import type { ValuationTemplateDetail, ValuationTemplateSummary } from "@/features/valuations/services/valuation-template.service";
 
@@ -344,6 +345,12 @@ export const api = {
       search.set("radio", String(radius));
       return request<RadiusHitDto[]>(`/mapas/comparables/alrededor?${search.toString()}`);
     },
+    /** V8.13: the comparables of the filters without a pin, located by another capture's pin or roughly by their address. */
+    locateComparables: (query: string) =>
+      request<{ pinned: number; approximated: number }>(`/mapas/comparables/aproximar${query ? `?${query}` : ""}`, { method: "POST", body: "{}" }),
+    /** V8.13: one comparable without a pin (its card), located the same way; its location, or null. */
+    locateComparable: (comparableId: string) =>
+      request<{ location: ComparableLocationDto | null }>("/mapas/comparables/aproximar", { method: "POST", body: JSON.stringify({ comparableId }) }),
     /** "Mis avalúos": the subject of each located valuation of the firm. */
     valuations: () => request<ValuationPinDto[]>("/mapas/avaluos"),
   },
@@ -413,6 +420,9 @@ export const api = {
     review: (id: ApiId) => request<ReviewRowDto[]>(`/avaluos/${id}/mercado/revision`),
     saveReview: (id: ApiId, comparableId: string, review: Pick<ComparableReviewDto, "status" | "checks" | "notes">) =>
       request<ComparableReviewDto>(`/avaluos/${id}/mercado/comparables/${comparableId}/revision`, { method: "PUT", body: JSON.stringify(review) }),
+    /** V8.13: one state (and every check, with `markAll`) for several comparables, saved at once. */
+    saveReviews: (id: ApiId, input: { comparableIds: string[]; status: string; markAll: boolean; notes?: string | null }) =>
+      request<Array<{ comparableId: string; review: ComparableReviewDto }>>(`/avaluos/${id}/mercado/revision`, { method: "PUT", body: JSON.stringify(input) }),
     /** "Ficha del comparable": any comparable of the firm's base, by the id of one of its captures. */
     card: (comparableId: string) => request<ComparableCardDto>(`/comparables/${comparableId}`),
     addFoundComparables: (id: ApiId, type: ComparableType, results: ComparableSearchHit[]) =>

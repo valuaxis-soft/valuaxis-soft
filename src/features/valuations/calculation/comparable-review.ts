@@ -7,7 +7,7 @@
 import { formatDay, hasAddress, type ComparableAddress, type ComparableListingDetails } from "./comparable-card";
 import { missingExchangeRate } from "./comparable-currency";
 import type { ComparableValidity } from "./comparable-validity";
-import { isBuiltComparableType, type ComparableType } from "./market-types";
+import { COMPARABLE_TYPES, isBuiltComparableType, type ComparableType } from "./market-types";
 
 /**
  * The states of the review. VERIFICADO, stored before the listing's link was
@@ -30,10 +30,17 @@ export const REVIEW_STATUS_LABELS: Record<BuiltInReviewStatus, string> = {
   RECHAZADO: "Rechazado",
 };
 
-/** The colours a state can take, the five the review always had (docs/DISENO.md): its look does not change. */
-export const REVIEW_TONES = ["gris", "verde", "azul", "ocre", "rojo"] as const;
+/**
+ * The colours a state can take: the five the review always had, and five
+ * more of the app's palette (V8.13, 12:32: «definir el color de la
+ * etiqueta»), all from the theme's tokens (docs/DISENO.md).
+ */
+export const REVIEW_TONES = ["gris", "verde", "azul", "ocre", "rojo", "violeta", "naranja", "celeste", "azul-vivo", "marino"] as const;
 export type ReviewTone = (typeof REVIEW_TONES)[number];
-export const REVIEW_TONE_LABELS: Record<ReviewTone, string> = { gris: "Gris", verde: "Verde", azul: "Azul", ocre: "Ocre", rojo: "Rojo" };
+export const REVIEW_TONE_LABELS: Record<ReviewTone, string> = {
+  gris: "Gris", verde: "Verde", azul: "Azul", ocre: "Ocre", rojo: "Rojo",
+  violeta: "Violeta", naranja: "Naranja", celeste: "Celeste", "azul-vivo": "Azul vivo", marino: "Marino",
+};
 const BUILT_IN_TONES: Record<BuiltInReviewStatus, ReviewTone> = {
   POR_REVISAR: "gris", VERIFICADO: "verde", VERIFICADO_NO_VIGENTE: "azul", CON_OBSERVACIONES: "ocre", RECHAZADO: "rojo",
 };
@@ -129,6 +136,16 @@ export function groupByComparableType<T extends { type: ComparableType }>(rows: 
   return order
     .map((type) => ({ type, rows: rows.filter((row) => row.type === type) }))
     .filter((group) => group.rows.length > 0);
+}
+
+/**
+ * The order of the markets in the review opened from one of them (V8.13,
+ * 13:04: «lo primero que me debe de aparecer es lo que estoy abriendo…
+ * después tendrán que venir estos otros»): that market, then the rest in
+ * their usual order. Without one, the usual order.
+ */
+export function reviewMarketOrder(first?: ComparableType | null): ComparableType[] {
+  return first ? [first, ...COMPARABLE_TYPES.filter((type) => type !== first)] : [...COMPARABLE_TYPES];
 }
 
 /** Each check of the firm's checklist by its key (a built-in one or one the firm added), marked or not. */

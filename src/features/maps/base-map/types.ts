@@ -20,6 +20,8 @@ export interface ComparablePinDto {
   location: string;
   lat: number;
   lon: number;
+  /** Without a pin: where its address falls, drawn apart from a pin (V8.13). */
+  approximate?: boolean;
   /** The area of its type (land, built or rentable), m². */
   area: number | null;
   landArea: number | null;
@@ -42,8 +44,12 @@ export interface ComparablePinsDto {
   pins: ComparablePinDto[];
   /** How many comparables of the filters have coordinates; more than `pins` when the map was capped. */
   located: number;
-  /** "N sin ubicar": comparables of the filters without coordinates. */
+  /** Comparables of the filters without a pin but with an approximate location, among `pins`. */
+  approximate?: number;
+  /** "N sin ubicar": comparables of the filters with neither a pin nor an approximate location. */
   unlocated: number;
+  /** Comparables without a pin never looked up by their address: the map asks the server to locate them. */
+  toLocate?: number;
 }
 
 /** A comparable within the radius searched, with its distance to the center in meters. */

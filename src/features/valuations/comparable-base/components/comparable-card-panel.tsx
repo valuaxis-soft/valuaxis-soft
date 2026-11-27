@@ -16,6 +16,7 @@ import { formatComparableId, formatDay } from "@/features/valuations/calculation
 import type { ComparableCardDto } from "@/features/valuations/calculation/comparable-card.service";
 import { COMPARABLE_TYPE_LABELS } from "@/features/valuations/calculation/market-types";
 import { ComparableCardView } from "@/features/valuations/components/calculation/comparable-card-view";
+import { cardLocationOf } from "@/features/valuations/components/calculation/comparable-card-dialog";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { BaseComparableDialog } from "./base-comparable-dialog";
 import { ComparableLocationMap } from "./comparable-location-map";
@@ -40,8 +41,7 @@ export function ComparableCardPanel({ card, canEdit, validityMonths, attributeNa
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
   const { comparable } = card;
-  const coordinates = comparable.latitude !== null && comparable.latitude !== undefined && comparable.longitude !== null && comparable.longitude !== undefined
-    ? { latitude: comparable.latitude, longitude: comparable.longitude } : null;
+  const location = cardLocationOf(card);
 
   const run = async (action: () => Promise<void>) => {
     setBusy(true);
@@ -90,7 +90,7 @@ export function ComparableCardPanel({ card, canEdit, validityMonths, attributeNa
           {/* The map under the location, as in the card of the valuation (V8.2). */}
           <ComparableCardView
             card={card}
-            map={<div className="border-t p-1.5"><ComparableLocationMap comparableId={comparable.id} coordinates={coordinates} canEdit={canEdit} /></div>}
+            map={<div className="border-t p-1.5"><ComparableLocationMap key={`${location?.latitude},${location?.longitude}`} comparableId={comparable.id} location={location} canEdit={canEdit} canLocate={canEdit} /></div>}
           />
         </TabsContent>
         <TabsContent value="historial" className="grid gap-3 text-sm" data-comparable-history>

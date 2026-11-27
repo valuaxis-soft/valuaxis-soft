@@ -540,6 +540,9 @@ export function SearchComparablesDialog({
                 googleMaps={googleMaps}
                 query={searchMapQuery(type, mapFilters)}
                 valuation={{ id: valuationId, type, readOnly, onAdded: (calculation) => onAdded?.(calculation) }}
+                // V8.13 (11:17): the map as wide as the window, its panel underneath.
+                stacked
+                locateByAddress={!readOnly}
               />
             </section>
           ) : null}

@@ -32,6 +32,7 @@ import {
   type ImageSlot,
 } from "../calculation/market.service";
 import { comparableFormValues, type ComparableType } from "../calculation/market-types";
+import { shareComparablePin } from "./comparable-location.service";
 import { ValuationWorkflowError } from "../services/valuation-workflow/errors";
 
 const include = { ...comparableInclude, tipoComparable: { select: { SClave: true } }, avaluo: { select: { SFolio: true } } } satisfies Prisma.ComparableAvaluoInclude;
@@ -113,7 +114,10 @@ export async function deleteBaseComparables(user: AuthUser, comparableIds: strin
   });
 }
 
-/** "Ubicar": the pin on the map, written in place on that capture; both coordinates, each within its range. */
+/**
+ * "Ubicar": the pin on the map, written in place on that capture and on every
+ * other capture of its number in the firm (V8.13); both coordinates, each within its range.
+ */
 export async function setBaseComparableCoordinates(user: AuthUser, comparableId: string, coordinates: { latitude: number; longitude: number }) {
   const problem = coordinatesError(coordinates.latitude, coordinates.longitude);
   if (problem) throw new ValuationWorkflowError(problem, 400);
@@ -123,6 +127,7 @@ export async function setBaseComparableCoordinates(user: AuthUser, comparableId:
       where: { IdComparableAvaluo: source.IdComparableAvaluo },
       data: { JUbicacionSnapshot: { latitude: coordinates.latitude, longitude: coordinates.longitude } as Prisma.InputJsonValue },
     });
+    await shareComparablePin(tx, user.organizationId, source.propiedad.IFolioComparable, coordinates, source.IdComparableAvaluo);
   });
 }
 

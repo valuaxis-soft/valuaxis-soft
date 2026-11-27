@@ -52,6 +52,7 @@ export function comparablePinCardHtml(pin: ComparablePinDto) {
     + `<span style="font-size:15px;font-weight:700;font-variant-numeric:tabular-nums">${escapeHtml(pinPriceLine(pin))}</span>`
     + (features ? line(features) : "")
     + line(pin.location)
+    + (pin.approximate ? line("Ubicación aproximada por su dirección") : "")
     + line(`${pin.expired ? "Vencido" : "Vigente"} hasta ${formatDay(pin.validUntil)}${pin.sourceName ? ` · ${pin.sourceName}` : ""}`)
     + `</div></div>`;
 }

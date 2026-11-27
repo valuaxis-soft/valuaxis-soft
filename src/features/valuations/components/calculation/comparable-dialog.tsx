@@ -1508,6 +1508,7 @@ export function ComparableSheetForm(props: ComparableDialogProps & {
               {/* V7.2-06 and V8.2: the pin on the map fills the latitude and longitude; the address is looked up in a map's words. */}
               <ComparableLocationPicker
                 className="border-t p-1.5"
+                comparableId={comparable?.id}
                 latitude={parseCoordinate(draft.latitude)}
                 longitude={parseCoordinate(draft.longitude)}
                 address={location}

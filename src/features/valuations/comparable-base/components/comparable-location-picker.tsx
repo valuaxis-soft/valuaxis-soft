@@ -9,6 +9,7 @@ import type { ComparableAddress } from "@/features/valuations/calculation/compar
 import { bestGeocodingResult } from "@/features/valuations/calculation/comparable-geocoding";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import type { LatLng } from "./comparable-location-leaflet";
+import { ComparableMapExpand } from "./comparable-map-expand";
 
 const Leaflet = dynamic(() => import("./comparable-location-leaflet"), {
   ssr: false,
@@ -35,7 +36,9 @@ const errorMessage = (error: unknown) =>
  * places the pin or takes that point. OpenStreetMap tiles, as the card's
  * map: no Google key in the browser.
  */
-export function ComparableLocationPicker({ latitude, longitude, address, query, parts, onChange, disabled = false, className }: {
+export function ComparableLocationPicker({ comparableId, latitude, longitude, address, query, parts, onChange, disabled = false, className }: {
+  /** A comparable already saved: its location is asked to the server, as its card shows it. */
+  comparableId?: string;
   latitude: number | null;
   longitude: number | null;
   /** The address as the dictamen prints it; looked up when there are no coordinates. */
@@ -50,7 +53,7 @@ export function ComparableLocationPicker({ latitude, longitude, address, query, 
 }) {
   const value = pickerPoint(latitude, longitude);
   const [found, setFound] = useState<{ point: LatLng; address: string } | null>(null);
-  const [looking, setLooking] = useState(false);
+  const [looking, setLooking] = useState(() => Boolean(comparableId && !value && address.trim() && !disabled));
   const [problem, setProblem] = useState<string | null>(null);
 
   const lookUp = async (text: string) => {
@@ -68,12 +71,31 @@ export function ComparableLocationPicker({ latitude, longitude, address, query, 
     }
   };
 
-  // Once per opening: a comparable without coordinates shows roughly where its address is.
+  // Once per opening: a comparable without coordinates shows roughly where its address is. A saved one asks the
+  // server first (V8.13): the pin another capture of its number has, or the approximate location the maps and its card show.
   const looked = useRef(false);
   useEffect(() => {
     if (looked.current || value || !address.trim() || disabled) return;
     looked.current = true;
-    void lookUp(query || address);
+    if (!comparableId) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- an asynchronous lookup of the address, once per opening, as before
+      void lookUp(query || address);
+      return;
+    }
+    // `looking` already starts true for a saved comparable without a pin.
+    api.maps.locateComparable(comparableId).then(
+      ({ location }) => {
+        setLooking(false);
+        // The pin another capture of its number has is its own already: it fills the latitude and longitude.
+        if (location && !location.approximate) onChange({ latitude: location.latitude, longitude: location.longitude });
+        else if (location) setFound({ point: { latitude: location.latitude, longitude: location.longitude }, address: location.address ?? address });
+        else void lookUp(query || address);
+      },
+      () => {
+        setLooking(false);
+        void lookUp(query || address);
+      },
+    );
     // Only the first render decides; afterwards the appraiser asks with the button.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -101,9 +123,11 @@ export function ComparableLocationPicker({ latitude, longitude, address, query, 
             <Button type="button" size="sm" variant="outline" className="h-7" disabled={disabled || looking || !(query || address).trim()} onClick={() => void lookUp(query || address)}>
               {looking ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <Search data-icon="inline-start" />} Buscar la dirección
             </Button>
+            {/* V8.13 (11:27): «ábrelo grande… para ubicarlo». */}
+            <ComparableMapExpand value={value} approximate={offered?.point ?? null} onChange={disabled ? undefined : place} title="Ubicar el comparable" />
           </span>
         </div>
-        <Leaflet value={value} onChange={disabled ? undefined : place} approximate={offered?.point ?? null} className="h-56 w-full rounded-sm" />
+        <Leaflet value={value} onChange={disabled ? undefined : place} approximate={offered?.point ?? null} className="h-80 w-full rounded-sm sm:h-96" />
         <p className="px-0.5 text-xs text-muted-foreground" role={problem ? "alert" : undefined}>
           {problem
             ?? (offered

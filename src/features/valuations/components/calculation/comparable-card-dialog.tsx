@@ -12,9 +12,10 @@ import { ComparableLocationMap } from "@/features/valuations/comparable-base/com
 import { ComparableCardView } from "./comparable-card-view";
 import { useExpandableDialog } from "./expandable-dialog";
 
-const coordinatesOf = ({ comparable }: ComparableCardDto) =>
+/** Where the card's map puts the comparable: what the server found (its pin, its number's or its approximate one), else its own coordinates. */
+export const cardLocationOf = ({ comparable, location }: ComparableCardDto) => location ?? (
   comparable.latitude !== null && comparable.latitude !== undefined && comparable.longitude !== null && comparable.longitude !== undefined
-    ? { latitude: comparable.latitude, longitude: comparable.longitude } : null;
+    ? { latitude: comparable.latitude, longitude: comparable.longitude, approximate: false, address: null } : null);
 
 /** The card of a comparable of the firm's base, read when it opens. */
 function ComparableCardDialog({ comparableId, onClose }: { comparableId: string; onClose: () => void }) {
@@ -46,7 +47,7 @@ function ComparableCardDialog({ comparableId, onClose }: { comparableId: string;
           <ComparableCardView
             card={state.card}
             // V8.2: the card shows where it is, with its pin.
-            map={<div className="border-t p-1.5"><ComparableLocationMap comparableId={comparableId} coordinates={coordinatesOf(state.card)} canEdit={false} /></div>}
+            map={<div className="border-t p-1.5"><ComparableLocationMap comparableId={comparableId} location={cardLocationOf(state.card)} canEdit={false} /></div>}
           />
         )}
         <DialogFooter>

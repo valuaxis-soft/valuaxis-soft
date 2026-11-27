@@ -7,7 +7,7 @@ import { Prisma } from "@prisma/client";
 
 import type { ComparableClass } from "../calculation/comparable-classes";
 import { LEGACY_KIND_PATTERNS } from "../calculation/comparable-kinds";
-import { searchTokens } from "./normalize";
+import { FUZZY_SIMILARITY, FUZZY_TOKEN_MIN, searchTokens, tokenSpellings } from "./normalize";
 
 /**
  * The comparables of the firm's base, as `c` with its valuation `a` (NULL for
@@ -80,16 +80,41 @@ export const constructionTypeCondition = (value: string | undefined) =>
 /** The day the offer was consulted: as captured, else the offer's date, else the day it was chosen. */
 export const CONSULTED = Prisma.sql`COALESCE(c."JPublicacionSnapshot"->>'consultedOn', c."JPublicacionSnapshot"->>'offerDate', to_char(c."DFechaSeleccion", 'YYYY-MM-DD'))`;
 
-/** Every word of `value` in `expression` (already without accents or case). */
+/**
+ * One word of a search in `expression` (already without accents or case),
+ * approximately (V8.13, 06:14: «no debe de ser el nombre exacto, sino las
+ * posibles coincidencias»): inside another word («bugam» in «Ciudad
+ * Bugambilias»), in any of its spellings («2a» or «segunda»), or, from five
+ * letters, misspelled (pg_trgm's word_similarity, extension of migration 001).
+ */
+export function tokenCondition(expression: Prisma.Sql, token: string): Prisma.Sql {
+  const spellings = tokenSpellings(token).map((spelling) => Prisma.sql`${expression} LIKE ${likePattern(spelling)}`);
+  const similar = token.length >= FUZZY_TOKEN_MIN ? [Prisma.sql`word_similarity(${token}, ${expression}) >= ${FUZZY_SIMILARITY}`] : [];
+  return Prisma.sql`(${Prisma.join([...spellings, ...similar], " OR ")})`;
+}
+
+/** Every word of `value` in `expression` (already without accents or case), each approximately. */
 export const wordsIn = (expression: Prisma.Sql, value: string | undefined) =>
-  value ? searchTokens(value).map((token) => Prisma.sql`${expression} LIKE ${likePattern(token)}`) : [];
+  value ? searchTokens(value).map((token) => tokenCondition(expression, token)) : [];
 
 /**
- * A place filter: the part captured with that name, or, for comparables of
- * before with a single location line, that line. Every word must be there.
+ * The parts of the address a place filter looks in: «Colonia» and
+ * «Fraccionamiento» are one place for the appraiser (V8.13, 06:27: «en colonia
+ * o en fraccionamiento… Bugambilias»), so either finds what was captured in the other.
+ */
+const PLACE_PARTS: Record<string, readonly string[]> = {
+  neighborhood: ["neighborhood", "subdivision"],
+  subdivision: ["subdivision", "neighborhood"],
+};
+
+/**
+ * A place filter: the part captured with that name (the colonia also in the
+ * fraccionamiento, and back), or, for comparables of before with a single
+ * location line, that line. Every word must be there, approximately.
  */
 export function placeCondition(part: string, value: string | undefined) {
-  return wordsIn(Prisma.sql`unaccent(lower(concat_ws(' ', c."JDireccionSnapshot"->>${part}, c."JDireccionSnapshot"->>'location')))`, value);
+  const parts = (PLACE_PARTS[part] ?? [part]).map((name) => Prisma.sql`c."JDireccionSnapshot"->>${name}`);
+  return wordsIn(Prisma.sql`unaccent(lower(concat_ws(' ', ${Prisma.join(parts, ", ")}, c."JDireccionSnapshot"->>'location')))`, value);
 }
 
 /** The postal code captured, or written in the location line of a comparable of before. */
@@ -113,6 +138,17 @@ const coordinate = (name: string) =>
  */
 export const COMPARABLE_POINT = Prisma.sql`CASE WHEN ${coordinate("latitude")} BETWEEN -90 AND 90 AND ${coordinate("longitude")} BETWEEN -180 AND 180
   THEN ST_SetSRID(ST_MakePoint(${coordinate("longitude")}, ${coordinate("latitude")}), 4326)::geography END`;
+
+/** A number of the approximate location kept beside the coordinates (comparable-location.service), or NULL. */
+const approximateCoordinate = (name: string) =>
+  Prisma.sql`CASE WHEN jsonb_typeof(c."JUbicacionSnapshot"->'approximate'->${name}) = 'number' THEN (c."JUbicacionSnapshot"->'approximate'->>${name})::float8 END`;
+
+/** Where the address of a comparable without a pin falls, as the geocoder answered it once (V8.13); NULL when unknown. */
+export const APPROXIMATE_POINT = Prisma.sql`CASE WHEN ${approximateCoordinate("latitude")} BETWEEN -90 AND 90 AND ${approximateCoordinate("longitude")} BETWEEN -180 AND 180
+  THEN ST_SetSRID(ST_MakePoint(${approximateCoordinate("longitude")}, ${approximateCoordinate("latitude")}), 4326)::geography END`;
+
+/** Where the maps draw a comparable: its pin, else its approximate location. */
+export const MAP_POINT = Prisma.sql`COALESCE(${COMPARABLE_POINT}, ${APPROXIMATE_POINT})`;
 
 /** The type of construction of the snapshot, unaccented, in lowercase and trimmed: what the kinds of before are read from. */
 const CONSTRUCTION_TYPE_TEXT = Prisma.sql`unaccent(lower(btrim(COALESCE(c."JPropiedadSnapshot"->>'constructionType', ''))))`;

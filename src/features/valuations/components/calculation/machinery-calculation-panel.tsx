@@ -1,10 +1,10 @@
 "use client";
 
-import { ArrowDown, ArrowUp, Calculator, IdCard, Loader2, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Calculator, FileDown, IdCard, Loader2, Plus, Redo2, Trash2, Undo2 } from "lucide-react";
 import { Fragment, useDeferredValue, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type KeyboardEvent, type ReactNode } from "react";
 import { toast } from "sonner";
 
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -951,6 +951,12 @@ function MarketForm({ valuationId, readOnly, calculation, onSaved, vehicle = fal
                 }}
               />
             </>
+          ) : null}
+          {/* V8.13 (05:31): the same functions as the real estate markets; the export appears once there are offers, as theirs. */}
+          {draft.offers.length ? (
+            <a className={cn(buttonVariants({ variant: "ghost", size: "sm" }))} href={`/api/avaluos/${valuationId}/maquinaria/exportar`} download data-machinery-export="">
+              <FileDown data-icon="inline-start" /> Exportar Excel
+            </a>
           ) : null}
           {!draft.offers.length ? (
             <p className="text-sm text-muted-foreground">Sin ofertas todavía: agrégalas aquí y sus datos se escriben en las tablas de abajo.</p>
