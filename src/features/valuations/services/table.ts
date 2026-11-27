@@ -163,8 +163,23 @@ export type TableSummaryBox = {
  * under the table, before its boxes ("table"), or under the boxes ("bottom").
  * A heading prints as a small bold title of its own, before the notes after it.
  */
-/** `small`: a source note, printed smaller than the table («Fuente: …»). */
-export type TableNote = { position: "top" | "table" | "bottom"; label?: string; text: string; heading?: boolean; small?: boolean };
+/**
+ * `small`: a source note, printed smaller than the table («Fuente: …»).
+ * `justification`: the justification of the factors, written in the
+ * capture's own fields: it prints in the tones of the document's palette and
+ * is edited in those fields, not in the list of the table's notes.
+ * `fromApproach`: with `justification`, the summary the annex of the factors
+ * takes from each approach: the editor shows it as it prints, written there.
+ */
+export type TableNote = {
+  position: "top" | "table" | "bottom";
+  label?: string;
+  text: string;
+  heading?: boolean;
+  small?: boolean;
+  justification?: boolean;
+  fromApproach?: boolean;
+};
 
 /** How the appraiser arranged the rows of a box under a table the calculation writes. */
 export type GeneratedBoxRows = {

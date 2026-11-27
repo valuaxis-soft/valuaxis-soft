@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { MACHINERY_CONSERVATION } from "../engine/machinery";
-import { EXTRA_FACTOR_KEY, MACHINERY_CHARACTERISTICS_MAX, MACHINERY_FACTORS, MAX_MACHINERY_FACTORS } from "./machinery-types";
+import { EXTRA_FACTOR_KEY, MACHINERY_CHARACTERISTICS_MAX, LEGACY_MAX_MACHINERY_FACTORS, MACHINERY_FACTORS, MACHINERY_FACTOR_LIMIT_MESSAGE } from "./machinery-types";
 import { MACHINERY_OFFER_FIELD_KEYS } from "./machinery-market-columns";
 import { OFFER_LEVELS } from "./market-types";
 import { capturedFormulasSchema } from "./captured-formulas";
@@ -70,7 +70,8 @@ const marketSchema = z.object({
   offerMark: offerMarkSchema.nullable().optional(),
   offerIntro: text(300).nullable().optional(),
   factorColumns: z.array(z.object({ key: factorColumnKey, label: text(40) }))
-    .max(MAX_MACHINERY_FACTORS, `La homologación lleva hasta ${MAX_MACHINERY_FACTORS} factores (sin contar FEd ni FRe).`)
+    // Five besides the FEd for a new one; one saved with more keeps them (the service refuses adding beyond five).
+    .max(LEGACY_MAX_MACHINERY_FACTORS, MACHINERY_FACTOR_LIMIT_MESSAGE)
     .refine((columns) => new Set(columns.map((column) => column.key)).size === columns.length, "Cada factor va una sola vez.")
     .nullable().optional(),
   fieldLabels: z.record(fieldKey, text(60)).nullable().optional(),

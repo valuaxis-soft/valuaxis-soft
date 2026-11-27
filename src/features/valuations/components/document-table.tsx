@@ -239,13 +239,48 @@ function SummaryBoxes({ tableV2, position }: { tableV2: TableV2; position: Table
 function TableNotes({ tableV2, position }: { tableV2: TableV2; position: TableNote["position"] }) {
   const notes = (tableV2.schema?.notes ?? []).filter((note) => note.position === position && note.text.trim());
   if (!notes.length) return null;
+  // The justification of the factors runs together, in its own toned frame; the other notes print as written.
+  const runs: Array<{ justification: boolean; notes: TableNote[] }> = [];
+  for (const note of notes) {
+    const justification = note.justification === true;
+    const last = runs.at(-1);
+    if (last && last.justification === justification) last.notes.push(note);
+    else runs.push({ justification, notes: [note] });
+  }
   return (
     <div className={cn("leading-snug", TABLE_TEXT_SIZE, TABLE_TEXT, position === "top" ? "mb-1.5" : "mt-1.5")} data-table-notes={position}>
-      {notes.map((note, index) => (note.heading ? (
-        <p className="mt-1 font-bold first:mt-0" key={index}>{note.text}</p>
+      {runs.map((run, runIndex) => (run.justification ? (
+        <FactorJustificationNotes notes={run.notes} key={runIndex} />
+      ) : run.notes.map((note, index) => (note.heading ? (
+        <p className="mt-1 font-bold first:mt-0" key={`${runIndex}-${index}`}>{note.text}</p>
       ) : (
-        <p className={cn("text-justify", note.small && "text-[0.85em] italic")} data-table-note-source={note.small ? "" : undefined} key={index}>
+        <p className={cn("text-justify", note.small && "text-[0.85em] italic")} data-table-note-source={note.small ? "" : undefined} key={`${runIndex}-${index}`}>
           {note.label ? <strong>{note.label} </strong> : null}
+          {note.text}
+        </p>
+      )))))}
+    </div>
+  );
+}
+
+/**
+ * «Justificación de los factores utilizados» in the tones of the document's
+ * palette, not as plain dark text (video 8.14, 36:16: «denle un formatito de
+ * tonos, colores»): a soft band with a rule of the palette, the title and the
+ * number of each comparable in its strong colour. Each colour falls back to
+ * the one of the default palette.
+ */
+function FactorJustificationNotes({ notes }: { notes: TableNote[] }) {
+  return (
+    <div
+      className="mt-1.5 break-inside-avoid-page rounded-sm border-l-[3px] border-[var(--doc-apartado,#2F5495)] bg-[var(--doc-pastel-soft,#E7EEF7)] px-2.5 py-1.5 first:mt-0 [-webkit-print-color-adjust:exact] [print-color-adjust:exact]"
+      data-factor-justification=""
+    >
+      {notes.map((note, index) => (note.heading ? (
+        <p className="mb-0.5 font-bold text-[color:var(--doc-on-pastel-soft,#00285A)]" key={index}>{note.text}</p>
+      ) : (
+        <p className="text-justify" key={index}>
+          {note.label ? <strong className="text-[color:var(--doc-on-pastel-soft,#00285A)]">{note.label} </strong> : null}
           {note.text}
         </p>
       )))}

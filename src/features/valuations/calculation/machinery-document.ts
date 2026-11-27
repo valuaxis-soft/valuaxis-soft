@@ -261,10 +261,16 @@ export function machineryStatisticText(key: StatisticKey, choice: PrintedStatist
   }
 }
 
-/** Under the homologation, the appraiser's justification of the factors, with its title on a line of its own. */
+/**
+ * Right under the homologation, before its values (video 8.13, 02:02), the
+ * appraiser's justification of the factors, with its title on a line of its
+ * own, in the tones of the document's palette.
+ */
 const justificationNotes = (market: Pick<MachineryMarketDto, "justification">): TableNote[] => {
   const text = market.justification?.trim();
-  return text ? [{ position: "bottom", heading: true, text: FACTOR_JUSTIFICATION_TITLE }, { position: "bottom", text }] : [];
+  return text
+    ? [{ position: "table", justification: true, heading: true, text: FACTOR_JUSTIFICATION_TITLE }, { position: "table", justification: true, text }]
+    : [];
 };
 
 /**

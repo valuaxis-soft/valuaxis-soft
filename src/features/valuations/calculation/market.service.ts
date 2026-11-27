@@ -55,7 +55,9 @@ import {
   comparableFormValues,
   comparableFormulaValues,
   defaultMarketSettings,
+  factorCountAllowed,
   factorKey,
+  FACTOR_LIMIT_MESSAGE,
   homologationBasisOf,
   isLandComparableType,
   isRentComparableType,
@@ -670,6 +672,8 @@ export async function saveMarketSettings(publicId: string, user: AuthUser, paylo
     const { settings: previous } = await loadCalculation(tx, versionId, payload.comparableType, false);
     const formulas = formulasOrThrow({ next: payload, sent: payload.formulas, previous, previousFormulas: previous.formulas ?? {} });
     const previousSlots = stored.factorSlots ?? [];
+    // Six factors; one saved with seven or eight keeps them but takes no more (video 8.13, 18:01).
+    if (!factorCountAllowed(payload.factorSlots.length, previousSlots.length)) throw new ValuationWorkflowError(FACTOR_LIMIT_MESSAGE, 400);
     await followSubjectRatings(tx, { versionId, typeId, organizationId: user.organizationId, previous: previousSlots, next: payload.factorSlots });
     const homologationBasis = unlessOmitted(payload.homologationBasis, stored.homologationBasis);
     const againstBase = homologationBasisOf({ comparableType: payload.comparableType, homologationBasis, baseArea: payload.baseArea }) === "LOTE_TIPO";

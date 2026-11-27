@@ -23,7 +23,8 @@ import {
   MAX_CHARACTERISTIC_FIELDS,
   MAX_COMPARABLE_ATTRIBUTES,
   MARKET_STATISTICS,
-  MAX_FACTOR_SLOTS,
+  FACTOR_LIMIT_MESSAGE,
+  LEGACY_MAX_FACTOR_SLOTS,
   MAX_OFFER_OPTIONS,
   OFFER_LEVELS,
   factorKey,
@@ -198,7 +199,7 @@ export const comparableInputSchema = z.object({
   // The machine's data of a machinery comparable; left out, they stay as stored.
   machinery: machineryDetailsSchema.nullable().optional(),
   // Built-in factors once each, plus the firm's own: at most the six of the homologation and as many own ones.
-  factors: z.array(factorSchema).max(FACTOR_TYPES.length + MAX_FACTOR_SLOTS)
+  factors: z.array(factorSchema).max(FACTOR_TYPES.length + LEGACY_MAX_FACTOR_SLOTS)
     .refine((factors) => new Set(factors.map(factorKey)).size === factors.length, "Cada tipo de factor va una sola vez."),
   formulas: capturedFormulasSchema.optional(),
 });
@@ -276,7 +277,8 @@ export const marketSettingsSchema = z.object({
     key: customFactorKey,
   }))
     .min(1)
-    .max(MAX_FACTOR_SLOTS, `La homologación lleva hasta ${MAX_FACTOR_SLOTS} factores (sin contar el FRe).`)
+    // Six for a new one; one saved with seven or eight keeps them (the service refuses adding beyond six).
+    .max(LEGACY_MAX_FACTOR_SLOTS, FACTOR_LIMIT_MESSAGE)
     .refine((slots) => new Set(slots.map(factorKey)).size === slots.length, "Cada factor va una sola vez.")
     .refine((slots) => slots.every((slot) => !slot.key || slot.type === "OTRO"), "Un factor del despacho es de tipo «Otro».")
     .refine((slots) => slots.some((slot) => slot.type === "SUPERFICIE"), "La homologación necesita el factor de superficie."),

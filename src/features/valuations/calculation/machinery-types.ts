@@ -345,7 +345,16 @@ const isBookFactor = (key: string): key is keyof MachineryFactors => MACHINERY_F
 const DEFAULT_MACHINERY_FACTOR_COLUMNS: readonly MachineryFactorColumn[] = MACHINERY_FACTORS.map((factor) => ({ key: factor.key, label: factor.short }));
 /** Key of a factor the appraiser added. */
 export const EXTRA_FACTOR_KEY = /^x[a-z0-9]{1,20}$/;
-export const MAX_MACHINERY_FACTORS = 10;
+/**
+ * Six factors per homologation, as in every market (video 8.13, 18:01): the
+ * FEd, which the age gives, and up to five more; the FRe is not one of them.
+ */
+export const MAX_MACHINERY_FACTORS = 5;
+/** What a homologation saved while ten were allowed may still hold: it keeps its factors and adds no more. */
+export const LEGACY_MAX_MACHINERY_FACTORS = 10;
+export const MACHINERY_FACTOR_LIMIT_MESSAGE = `La homologación lleva hasta ${MAX_MACHINERY_FACTORS + 1} factores contando el FEd, sin contar el FRe. Quita uno para agregar otro.`;
+/** Whether the homologation may have `next` factors besides the FEd after having `previous`: up to five, or no more than it had. */
+export const machineryFactorCountAllowed = (next: number, previous: number) => next <= MAX_MACHINERY_FACTORS || next <= previous;
 
 /** The name the book gives one of its factors (FCo…), or null for one the appraiser added. */
 export const bookFactorShort = (key: string) => MACHINERY_FACTORS.find((factor) => factor.key === key)?.short ?? null;

@@ -112,9 +112,12 @@ export function useCalculationDocumentSync({
   const marketResults = useRef(new Map<ComparableType, MarketApproachResult | null>());
   // The carátula's «Incluir datos del anunciante en la memoria» (matrix 1.5 bis): off, the offers print without them.
   const advertiserData = printsAdvertiserData(sections);
+  // The last machinery calculation, to write its pages again when what is valued becomes a vehicle or stops being one.
+  const lastMachinery = useRef<MachineryCalculationDto | null>(null);
   const applyFactorAnnex = () => {
-    // A market left out of the dictamen ("Agregar al informe") is left out of the annex too.
-    const blocks = factorJustificationBlocks(marketsInReport([...marketsByType.current.values()], excludedReportApproaches(sections)));
+    // A market left out of the dictamen ("Agregar al informe") is left out of the annex too; the machinery market goes after them.
+    const machineryMarket = lastMachinery.current?.applies && lastMachinery.current.configured.market ? lastMachinery.current.market : null;
+    const blocks = factorJustificationBlocks(marketsInReport([...marketsByType.current.values()], excludedReportApproaches(sections)), machineryMarket);
     updateBySection("motor-anexo-factores", (key, section) =>
       key === "HOMOLOGACION"
         ? replaceGeneratedBlocks(section, (block) => block.id.startsWith(FACTOR_ANNEX_PREFIX), blocks, { placeholderIds: FACTOR_ANNEX_TEMPLATE_BLOCK_IDS })
@@ -190,8 +193,6 @@ export function useCalculationDocumentSync({
         : section);
   };
 
-  // The last machinery calculation, to write its pages again when what is valued becomes a vehicle or stops being one.
-  const lastMachinery = useRef<MachineryCalculationDto | null>(null);
   const applyMachinery = (calculation: MachineryCalculationDto) => {
     lastMachinery.current = calculation;
     if (!canEdit || calculation.locked || !calculation.applies) return;
@@ -207,6 +208,7 @@ export function useCalculationDocumentSync({
         : key === "MERCADO_VENTA"
           ? replaceGeneratedBlocks(section, isMachineryMarketBlock, marketBlocks, { placeholderIds: MARKET_TEMPLATE_BLOCK_IDS })
           : section);
+    applyFactorAnnex();
   };
 
   // The last conclusion, to write it again when the appraiser links a concept to it again.

@@ -4,10 +4,10 @@ import { test } from "node:test";
 import {
   FACTOR_ANNEX_PREFIX,
   FACTOR_ANNEX_TEMPLATE_BLOCK_IDS,
-  IN_EACH_APPROACH,
   factorJustificationBlocks,
   marketsInReport,
 } from "../src/features/valuations/calculation/factor-justification-document";
+import { DEFAULT_MACHINERY_MARKET, emptyOffer } from "../src/features/valuations/calculation/machinery-types";
 import { replaceGeneratedBlocks } from "../src/features/valuations/calculation/market-document";
 import { defaultMarketSettings, type ComparableDto, type ComparableFactorDto, type MarketCalculationDto } from "../src/features/valuations/calculation/market-types";
 import { homologacionSection } from "../src/features/valuations/sections/homologacion";
@@ -43,7 +43,7 @@ const rows = (blocks: ReturnType<typeof factorJustificationBlocks>) => {
   }));
 };
 
-test("the annex sums up each factor: approach, range of values and the justifications, once each with their comparables", () => {
+test("the annex sums up each factor of a market: the range of its values and the justifications, once each with their comparables", () => {
   const land = market("TERRENO_VENTA", [
     comparable(1, [factor("NEGOCIACION", 0.95), factor("ZONA", 1.05, "Zona superior")]),
     comparable(2, [factor("NEGOCIACION", 0.9), factor("ZONA", 1.05, "Zona superior")]),
@@ -52,25 +52,49 @@ test("the annex sums up each factor: approach, range of values and the justifica
   const blocks = factorJustificationBlocks([land]);
   assert.equal(blocks.length, 1);
   assert.equal(blocks[0].id, FACTOR_ANNEX_PREFIX);
+  assert.equal(blocks[0].apartados[0].title, "Terrenos en venta", "the part of the market, under its title");
   assert.deepEqual(rows(blocks), [
-    ["Negociación", "Terrenos en venta", "0.90 – 0.95", "—"],
-    ["Zona", "Terrenos en venta", "0.95 – 1.05", "Comp. 1, 2: Zona superior Comp. 3: Zona inferior"],
+    ["Negociación", "0.90 – 0.95", "—"],
+    ["Zona", "0.95 – 1.05", "Comparables 1 y 2: Zona superior Comparable 3: Zona inferior"],
   ]);
   const notes = ensureTableV2(blocks[0].apartados[0].tables[0] as TableContent).schema?.notes ?? [];
-  assert.deepEqual(notes.map((note) => [note.label, note.text]), [["Terrenos en venta:", "Factores del catálogo del despacho. Comp. 3: Lote en esquina"]]);
+  assert.deepEqual(notes.map((note) => [note.heading ?? false, note.label, note.text]), [
+    [true, undefined, "Justificación de los factores utilizados"],
+    [false, undefined, "Factores del catálogo del despacho."],
+    [false, "Comparable 3:", "Lote en esquina"],
+  ]);
+  assert.ok(notes.every((note) => note.justification && note.fromApproach && note.position === "table"), "in the toned frame of the justification, written in its approach");
 });
 
-test("a market whose justification prints in its approach is not repeated: the annex says so", () => {
-  const shown = market("TERRENO_VENTA", [comparable(1, [factor("ZONA", 1.05, "Zona superior")])]);
-  const blocks = factorJustificationBlocks([shown]);
-  assert.equal(blocks[0].apartados[0].tables.length, 0);
-  assert.deepEqual(blocks[0].apartados[0].concepts.map((concept) => concept.value), [IN_EACH_APPROACH]);
+/* Video 8.14, 35:41: «sepárenme aparte por tipo de enfoque o de cálculo… un resumen de lo que ya escribieron». */
+test("V8.14: one part per kind of calculation, in the dictamen's order, each with the summary of what was written there, also when it prints in its approach", () => {
+  const houses = market("INMUEBLE_VENTA", [
+    comparable(1, [factor("ZONA", 1.1)], "Ubicación superior, sobre avenida."),
+    comparable(2, [factor("ZONA", 1.1)], "Conservación regular."),
+    comparable(3, [factor("ZONA", 1)], "Ubicación superior, sobre avenida."),
+  ]);
+  const rents = market("INMUEBLE_RENTA", [comparable(1, [factor("NEGOCIACION", 0.95)], "Casa con alberca.")]);
+  const land = market("TERRENO_VENTA", [comparable(1, [factor("NEGOCIACION", 0.95)])], { justification: "Lotes de la misma colonia." });
+  const [block] = factorJustificationBlocks([rents, houses, land]);
+  assert.deepEqual(block.apartados.map((apartado) => apartado.title), ["Terrenos en venta", "Inmuebles en venta", "Inmuebles en renta"]);
+  const written = (index: number) => (ensureTableV2(block.apartados[index].tables[0] as TableContent).schema?.notes ?? [])
+    .filter((note) => !note.heading).map((note) => `${note.label ? `${note.label} ` : ""}${note.text}`);
+  assert.deepEqual(written(0), ["Lotes de la misma colonia."]);
+  assert.deepEqual(written(1), ["Comparables 1 y 3: Ubicación superior, sobre avenida.", "Comparable 2: Conservación regular."]);
+  assert.deepEqual(written(2), ["Comparable 1: Casa con alberca."]);
+});
 
-  const hidden = market("INMUEBLE_VENTA", [comparable(1, [factor("ZONA", 1.1, "Mejor ubicación")])], { showFactorJustification: false });
-  const mixed = factorJustificationBlocks([hidden, shown]);
-  assert.deepEqual(rows(mixed).map((row) => row[1]), ["Inmuebles en venta"], "only the market not shown in its approach");
-  const notes = ensureTableV2(mixed[0].apartados[0].tables[0] as TableContent).schema?.notes ?? [];
-  assert.equal(notes[0].text, "Las justificaciones de terrenos en venta se presentan en su enfoque.");
+test("V8.14: the machinery market has its part too, after the real estate markets: the FEd and its factors, with what was written", () => {
+  const offer = (index: number, conservation: number) => ({ ...emptyOffer(index), price: 500_000, age: 5, rating: 8, conservation });
+  const [block] = factorJustificationBlocks([], {
+    ...DEFAULT_MACHINERY_MARKET,
+    offers: [offer(0, 0.9), offer(1, 0.85)],
+    justification: "La conservación se calificó en sitio.",
+  });
+  assert.deepEqual(block.apartados.map((apartado) => apartado.title), ["Maquinaria y equipo"]);
+  assert.deepEqual(rows([block]).slice(0, 2).map((row) => row.slice(0, 2)), [["Edad FEd", "—"], ["FCo", "0.85 – 0.90"]]);
+  const notes = ensureTableV2(block.apartados[0].tables[0] as TableContent).schema?.notes ?? [];
+  assert.deepEqual(notes.map((note) => note.text), ["Justificación de los factores utilizados", "La conservación se calificó en sitio."]);
 });
 
 test("no comparables, no annex; the generated block takes the place of the template table and goes away with it", () => {

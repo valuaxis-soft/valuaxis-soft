@@ -196,6 +196,8 @@ export function GeneratedTableEditor(props: {
                 readOnly={props.readOnly}
                 onChange={(next) => props.onUpdate((current) => applyTableLayout(sourceOf(current), withTableNotes(layoutOf(current), sourceOf(current), next)))}
               />
+              {/* Under its notes, before its boxes, what the capture writes that prints there (the justification of the factors). */}
+              <CaptureSlotTarget address={{ table: source.id, part: "notes" }} className="mt-3 grid gap-3 empty:hidden" />
               <GeneratedBoxLabels table={props.table} readOnly={props.readOnly} onUpdate={props.onUpdate} />
               {/* After its notes and boxes, what the calculation's capture adds at the end (a market's values and statistics). */}
               <CaptureSlotTarget address={{ table: source.id, part: "after" }} className="mt-3 grid gap-3 empty:hidden" />

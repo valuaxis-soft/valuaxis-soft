@@ -245,3 +245,20 @@ test("the market's factors as columns, its additional amount and its names save,
   assert.equal((await stored(fixture.publicId)).market, 1420000);
   assert.equal((await getConclusionCalculation(fixture.publicId, fixture.organizationId)).values.mercado, 1420000);
 });
+
+/* Video 8.13, 18:01: six factors, the FEd among them, the FRe not. */
+test("the machinery homologation takes the FEd and five factors; a sixth beyond the FEd is refused, one saved with more keeps them", async () => {
+  const fixture = await machineryFixture();
+  const columns = (count: number) => Array.from({ length: count }, (_, index) => ({ key: `xf${index}`, label: `F${index}` }));
+  const save = (count: number) => saveMachineryCalculation(fixture.publicId, fixture.user, machineryInputSchema.parse({ market: { ...workbookMarket, factorColumns: columns(count) } }));
+  const refused = (error: unknown) => error instanceof Error && /hasta 6 factores contando el FEd/.test(error.message);
+  await save(5);
+  await assert.rejects(save(6), refused);
+  // A capture saved while ten were allowed.
+  const valuation = await prisma.avaluo.findUniqueOrThrow({ where: { UIdentificadorPublico: fixture.publicId } });
+  const approach = await prisma.enfoqueMaquinaria.findUniqueOrThrow({ where: { IdVersionAvaluo: valuation.IdVersionTrabajo! } });
+  await prisma.enfoqueMaquinaria.update({ where: { IdEnfoqueMaquinaria: approach.IdEnfoqueMaquinaria }, data: { JMercado: { ...(approach.JMercado as Record<string, unknown>), factorColumns: columns(7) } } });
+  await save(7);
+  assert.equal((await getMachineryCalculation(fixture.publicId, fixture.organizationId)).market.factorColumns?.length, 7);
+  await assert.rejects(save(8), refused);
+});

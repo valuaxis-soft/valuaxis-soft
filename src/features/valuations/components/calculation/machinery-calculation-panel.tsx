@@ -18,6 +18,7 @@ import {
   MACHINERY_CHARACTERISTICS_MAX,
   MACHINERY_EXPENSES,
   MACHINERY_FACTORS,
+  MACHINERY_FACTOR_LIMIT_MESSAGE,
   MAX_MACHINERY_FACTORS,
   QUOTATION_KINDS,
   alignedCharacteristics,
@@ -70,6 +71,7 @@ import { formatComparableId } from "@/features/valuations/calculation/comparable
 import { CaptureSlot, useCaptureColumns, usePublishCapturePages } from "../editor/capture-host";
 import { useConfirmDelete } from "../editor/delete-confirm";
 import { CommitCell } from "./commit-cell";
+import { FactorJustificationCapture } from "./factor-justification-capture";
 import { MarketOfferLevel } from "./market-offer-level";
 import { StatisticsTable, statisticValueText } from "./market-statistics-table";
 import { CALCULATION_REDO_LABEL, CALCULATION_UNDO_LABEL, useDraftHistory } from "./use-draft-history";
@@ -746,8 +748,9 @@ function MarketForm({ valuationId, readOnly, calculation, onSaved, vehicle = fal
     if (insertedFactors.current.has(columnId)) return;
     insertedFactors.current.add(columnId);
     const factors = factorsNow();
+    // Six factors with the FEd, the FRe not among them (video 8.13, 18:01); the column typed is not kept.
     if (factors.length >= MAX_MACHINERY_FACTORS) {
-      toast.info(`La homologación lleva hasta ${MAX_MACHINERY_FACTORS} factores (sin contar FEd ni FRe).`);
+      toast.warning(MACHINERY_FACTOR_LIMIT_MESSAGE, { description: "La columna no se agregó: el FRe multiplica solo los factores de la homologación." });
       return;
     }
     const position = after && factorAt(after) >= 0 ? factorAt(after) + 1 : 0;
@@ -1108,7 +1111,7 @@ function MarketForm({ valuationId, readOnly, calculation, onSaved, vehicle = fal
         </p>
       </CaptureSlot>
 
-      {/* Under the homologation: the values and statistics, then the additional amount and the justification, at the end (video 8.10, 04:18). */}
+      {/* Under the homologation and its boxes: the values and statistics, then the additional amount (video 8.10, 04:18). */}
       <CaptureSlot at={{ table: homologationTable, part: "after" }} fallback>
         <div className="grid gap-3" data-machinery-values="">
           <div className="grid gap-2 rounded-md border bg-background p-2" data-market-statistics="">
@@ -1149,8 +1152,14 @@ function MarketForm({ valuationId, readOnly, calculation, onSaved, vehicle = fal
             </Field>
             <p className="pb-1 text-xs text-muted-foreground">Se suma a la mediana redondeada y se imprime sobre el valor comparativo de mercado cuando no es cero.</p>
           </fieldset>
-          <fieldset disabled={readOnly} className="grid gap-1 rounded-md border bg-background p-2">
-            <FieldLabel htmlFor="machinery-market-justification">Justificación de los factores utilizados (se imprime después de la homologación)</FieldLabel>
+        </div>
+      </CaptureSlot>
+
+      {/* Right under the homologation table and its notes, before its values: where the dictamen prints it (video 8.13, 02:02). */}
+      <CaptureSlot at={{ table: homologationTable, part: "notes" }} fallback>
+        <FactorJustificationCapture readOnly={readOnly}>
+          <fieldset disabled={readOnly} className="grid gap-1">
+            <FieldLabel htmlFor="machinery-market-justification" className="sr-only">Justificación de los factores utilizados</FieldLabel>
             <JustificationField
               key={draft.justification}
               id="machinery-market-justification"
@@ -1158,7 +1167,7 @@ function MarketForm({ valuationId, readOnly, calculation, onSaved, vehicle = fal
               onCommit={(justification) => change((current) => ({ ...current, justification }))}
             />
           </fieldset>
-        </div>
+        </FactorJustificationCapture>
       </CaptureSlot>
 
       {card !== null && draft.offers[card] ? (
@@ -1185,6 +1194,7 @@ function JustificationField(props: { id: string; value: string; onCommit: (text:
     <Textarea
       id={props.id}
       rows={2}
+      className="bg-background"
       maxLength={2000}
       value={value}
       onChange={(event) => setValue(event.target.value)}
