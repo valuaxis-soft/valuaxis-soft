@@ -9,6 +9,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { applyTableLayout, layoutOf, sourceOf, tableNotesOf, withTableLayouts, withTableNotes } from "../src/features/valuations/calculation/generated-table-layout";
+import { withAppraiserLayout } from "../src/features/valuations/calculation/generated-block-layout";
 import { generatedTable, figureColumn, textColumn } from "../src/features/valuations/calculation/generated-content";
 import { DEFAULT_HOMOLOGATION_NOTE, marketColumnField, marketDocumentBlocks, marketLinkTableOf, marketTableId } from "../src/features/valuations/calculation/market-document";
 import { extraStatisticText, statisticFormulaValue, statisticLabel, withExtraStatistic, withStatisticLabel, withoutExtraStatistic } from "../src/features/valuations/calculation/market-statistics";
@@ -238,4 +239,17 @@ test("V8.12 (16:20): the layers of the map of comparables tell the kinds apart, 
   const hidden = new Set([layers[0].key]);
   assert.equal(visibleKindPins(pins, layerVisibility(), hidden).length, 3);
   assert.equal(visibleKindPins(pins, layerVisibility(["TERRENO_VENTA"]), new Set()).length, 1);
+});
+
+test("#172 in the market: the tables of a subbloque arranged side by side stay so when the calculation writes them again", () => {
+  const [block] = pages(market(), { capture: true });
+  const data = block.apartados.find((apartado) => apartado.id.endsWith("-datos"))!;
+  const [comparables, offers] = data.tables.map((table) => table.id);
+  const sideBySide = { version: 2 as const, rows: [{ id: "fila-1", columns: [{ id: "c-1", items: [{ type: "table" as const, id: comparables }] }, { id: "c-2", items: [{ type: "table" as const, id: offers }] }] }] };
+  const arranged = { ...block, apartados: block.apartados.map((apartado) => (apartado.id === data.id ? { ...apartado, contentLayout: sideBySide } : apartado)) };
+  const [again] = pages(market(), { capture: true });
+  const kept = withAppraiserLayout(again, arranged).apartados.find((apartado) => apartado.id === data.id)!;
+  const rows = (kept.contentLayout as typeof sideBySide).rows;
+  assert.equal(rows.length, 1);
+  assert.deepEqual(rows[0].columns.map((column) => column.items.map((item) => item.id)), [[comparables], [offers]]);
 });
