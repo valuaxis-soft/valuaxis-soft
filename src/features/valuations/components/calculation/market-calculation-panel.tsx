@@ -99,12 +99,13 @@ import { collectFormulas, withFormulaTexts } from "@/features/valuations/calcula
 import { FormulaInput, LiveFormulaOwnerProvider } from "./formula-input";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { formatComparableId, todayInMexico } from "@/features/valuations/calculation/comparable-card";
-import { comparableWarnings, isVerifiedStatus, reviewStatusOf, type ReviewStatusItem } from "@/features/valuations/calculation/comparable-review";
+import { comparableWarnings, reviewStatusOf, type ReviewStatusItem } from "@/features/valuations/calculation/comparable-review";
 import { builtAreaToleranceOf } from "@/features/valuations/calculation/comparable-review-checklist";
 import { changesList, comparableListSteps } from "./market-comparable-undo";
 import { marketMemoryKey, sessionStore, storeMarketScroll, storeMarketType, storedMarketScroll, storedMarketType } from "./market-tab-memory";
 import { ComparableDialog, type PendingImages } from "./comparable-dialog";
 import { ComparableReviewDialog } from "./comparable-review-dialog";
+import { REVIEW_TONE_STYLES } from "./review-status-style";
 import { RoundingSelect, SurfacePowerSelect } from "./calculation-controls";
 import { CalculationPrecisionSummary } from "./calculation-precision-control";
 import { FactorJustificationCapture } from "./factor-justification-capture";
@@ -1183,6 +1184,9 @@ function MarketTypePanel(props: {
             {comparables.length ? (
               <ComparableReviewDialog
                 valuationId={valuationId}
+                // V8.13 (13:04): the market it is opened from goes first.
+                type={type}
+                onStatuses={(statuses) => setReviewThresholds((current) => ({ ...current, statuses }))}
                 // A reviewer saves the review though the rest is read-only; a concluded valuation keeps it as it was.
                 readOnly={!(props.canReview ?? !props.readOnly) || Boolean(calculation.locked)}
                 // The review changes no calculation; the panel only shows the new state.
@@ -1237,8 +1241,7 @@ function MarketTypePanel(props: {
               first={index === 0}
               last={index === comparables.length - 1}
               warnings={warnings.map((warning) => warning.message)}
-              status={reviewStatusOf(comparable.review?.status ?? "POR_REVISAR", reviewThresholds.statuses, comparable.review).label}
-              statusTone={isVerifiedStatus(comparable.review?.status ?? "POR_REVISAR") ? "verified" : (comparable.review?.status ?? "POR_REVISAR") === "POR_REVISAR" ? "pending" : "other"}
+              status={reviewStatusOf(comparable.review?.status ?? "POR_REVISAR", reviewThresholds.statuses, comparable.review)}
               readOnly={readOnly}
               onOpen={() => setEditing(comparable)}
               onMove={(by) => {
@@ -1673,9 +1676,8 @@ function ComparableRowActions(props: {
   first: boolean;
   last: boolean;
   warnings: string[];
-  /** Its review state, as the firm names it (video 8.12), and how it reads. */
-  status: string;
-  statusTone: "verified" | "pending" | "other";
+  /** Its review state, as the firm names it and colours it (videos 8.12 and 8.13). */
+  status: ReviewStatusItem;
   readOnly: boolean;
   onOpen: () => void;
   onMove: (by: -1 | 1) => void;
@@ -1684,7 +1686,15 @@ function ComparableRowActions(props: {
   const { comparable, readOnly } = props;
   return (
     <span className="flex items-center gap-0.5" data-comparable-actions={formatComparableId(comparable.folio) ?? comparable.id}>
-      <span className={cn("px-1 text-xs whitespace-nowrap", props.statusTone === "verified" ? "text-success-strong" : props.statusTone === "pending" ? "text-muted-foreground" : "text-highlight-strong")} data-review-status="">{props.status}</span>
+      <span
+        className={cn(
+          "rounded-sm px-1.5 py-0.5 text-xs whitespace-nowrap",
+          props.status.key === "POR_REVISAR" ? "text-muted-foreground" : cn("font-medium", REVIEW_TONE_STYLES[props.status.tone].solid),
+        )}
+        data-review-status={props.status.key}
+      >
+        {props.status.label}
+      </span>
       {props.warnings.length ? (
         <span className="px-0.5 text-highlight-strong" title={props.warnings.join("\n")} data-comparable-warnings="">
           <AlertTriangle className="size-3.5" aria-label={`Avisos del comparable ${comparable.reference}: ${props.warnings.join(" ")}`} />

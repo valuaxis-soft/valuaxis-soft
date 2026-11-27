@@ -22,6 +22,48 @@ export function searchTokens(value: string) {
   return [...new Set(searchText(value).split(" ").filter(Boolean))].slice(0, MAX_TOKENS);
 }
 
+/**
+ * The ways a word of a place is written (V8.13, 06:14: «unas veces lo
+ * registras de una manera, otras veces de otra»): «2a», «2da» and «segunda»
+ * are the same section, «fracc.» is «fraccionamiento», «cd» is «ciudad».
+ * Each group lists its spellings; a word of one is matched by any of them.
+ */
+const SPELLINGS: readonly (readonly string[])[] = [
+  ["1a", "1ra", "1era", "1er", "primera", "primer"],
+  ["2a", "2da", "segunda"],
+  ["3a", "3ra", "3era", "tercera"],
+  ["4a", "4ta", "cuarta"],
+  ["5a", "5ta", "quinta"],
+  ["secc", "sec", "seccion"],
+  ["fracc", "frac", "fraccionamiento"],
+  ["col", "colonia"],
+  ["cd", "ciudad"],
+  ["av", "avda", "avenida"],
+  ["blvd", "blv", "boulevard", "bulevar"],
+  ["priv", "privada"],
+  ["cda", "cerrada"],
+  ["prol", "prolongacion"],
+  ["pte", "poniente"],
+  ["ote", "oriente"],
+  ["nte", "norte"],
+  ["res", "residencial"],
+];
+
+/** Every spelling of a word of the search, itself first: «2a» → «2a», «2da», «segunda». */
+export function tokenSpellings(token: string): string[] {
+  const group = SPELLINGS.find((spellings) => spellings.includes(token));
+  return group ? [token, ...group.filter((spelling) => spelling !== token)] : [token];
+}
+
+/**
+ * From this many letters a word also matches when written a little
+ * differently («Bugambilas», «Buganbilias»); shorter ones only as written,
+ * or «sur» would find «san».
+ */
+export const FUZZY_TOKEN_MIN = 5;
+/** pg_trgm's word_similarity a misspelled word needs (0 to 1): «buganbilias» against «bugambilias» is 0.6, «centro» against «centinela» 0.57. */
+export const FUZZY_SIMILARITY = 0.6;
+
 /** Text a query is matched against, besides the location. */
 function secondaryText(comparable: FoundComparable) {
   return searchText([

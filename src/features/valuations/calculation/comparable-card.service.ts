@@ -22,6 +22,7 @@ import { comparableValidity, type ComparableValidity } from "./comparable-validi
 import { comparableInclude, toComparableDto } from "./market.service";
 import { COMPARABLE_TYPES, type ComparableDto, type ComparableType } from "./market-types";
 import { AREA, FIRM_BASE_FROM, classCondition, firmBaseCondition, likePattern } from "../comparable-search/own-base-sql";
+import { cachedApproximate, locationOf, pinOfNumber, type ComparableLocationDto } from "../comparable-base/comparable-location.service";
 
 /** A valuation a comparable of the base was used in. */
 export type ComparableUseDto = {
@@ -65,6 +66,11 @@ export type ComparableCardDto = {
   characteristicLabels?: Record<string, string>;
   /** The names the market gives the card's other data (its columns renamed, or renamed in the card): video 8.9. */
   fieldLabels?: Record<string, string>;
+  /**
+   * Where its map puts it (V8.13): its pin, the pin another capture of its
+   * number has, or roughly where its address falls; null when none is known yet.
+   */
+  location?: ComparableLocationDto | null;
 };
 
 export type ReviewRowDto = { comparable: ComparableDto; type: ComparableType; warnings: ComparableWarning[] };
@@ -208,7 +214,19 @@ export async function getComparableCard(comparableId: string, organizationId: nu
     }],
     history,
     ...(row.IdVersionAvaluo ? await marketLabels(row.IdVersionAvaluo, type) : { characteristicLabels: {} }),
+    location: await cardLocation(row, organizationId),
   };
+}
+
+/** The pin of the capture, else the newest pin of its number in the firm, else its approximate location (temporary cache, 30 days at most). */
+async function cardLocation(
+  row: { UIdentificadorPublico: string; JUbicacionSnapshot: Prisma.JsonValue; JDireccionSnapshot: Prisma.JsonValue; propiedad: { IFolioComparable: number | null } },
+  organizationId: number,
+): Promise<ComparableLocationDto | null> {
+  const own = locationOf(row.JUbicacionSnapshot, row.JDireccionSnapshot, await cachedApproximate(prisma, organizationId, row.UIdentificadorPublico));
+  if (own && !own.approximate) return own;
+  const shared = row.propiedad.IFolioComparable === null ? null : await pinOfNumber(prisma, organizationId, row.propiedad.IFolioComparable);
+  return shared ? { ...shared, approximate: false, address: null } : own;
 }
 
 /** "Posible duplicado de C-00012 (avalúo VLO-1): mismo teléfono y superficie." */

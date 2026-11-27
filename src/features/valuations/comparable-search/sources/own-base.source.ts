@@ -12,7 +12,7 @@ import { reusedEvidenceOf, type ReusedComparableEvidence } from "../../calculati
 import { searchTokens } from "../normalize";
 import {
   AREA, BUILT_AREA, CONSULTED, FIRM_BASE_FROM, HAYSTACK, LAND_AREA, classCondition, constructionTypeCondition, firmBaseCondition, jsonNumber, kindCondition,
-  landUseCondition, likePattern, placeCondition, postalCodeCondition, rangeCondition, streetTypeCondition,
+  landUseCondition, placeCondition, postalCodeCondition, rangeCondition, streetTypeCondition, tokenCondition,
 } from "../own-base-sql";
 import { comparableClassOfType } from "../../calculation/comparable-classes";
 import type { ComparableSearchContext, ComparableSearchQuery, ComparableSearchResult, ComparableSearchSource, FoundComparable } from "../types";
@@ -126,7 +126,7 @@ async function search(query: ComparableSearchQuery, context: ComparableSearchCon
     ...classCondition(comparableClassOfType(query.type)),
     ...kindCondition(filters.kind),
     ...(wantedFolio ? [Prisma.sql`p."IFolioComparable" = ${wantedFolio}`] : []),
-    ...tokens.map((token) => Prisma.sql`${HAYSTACK} LIKE ${likePattern(token)}`),
+    ...tokens.map((token) => tokenCondition(HAYSTACK, token)),
     ...placeCondition("state", filters.state),
     ...placeCondition("municipality", filters.municipality),
     ...placeCondition("neighborhood", filters.neighborhood),

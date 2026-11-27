@@ -21,6 +21,7 @@ import {
   groupByComparableType,
   isVerifiedStatus,
   markAllChecks,
+  reviewMarketOrder,
   reviewStatusOf,
   statusAfterLinkCheck,
   type ComparableReviewDto,
@@ -35,13 +36,14 @@ import {
   missingRequiredChecks,
   type ComparableReviewChecklist,
 } from "@/features/valuations/calculation/comparable-review-checklist";
-import { COMPARABLE_TYPES, COMPARABLE_TYPE_LABELS, isRentComparableType } from "@/features/valuations/calculation/market-types";
+import { COMPARABLE_TYPE_LABELS, isRentComparableType, type ComparableType } from "@/features/valuations/calculation/market-types";
 import { api, SessionExpiredError } from "@/lib/api-client";
 import { cn } from "@/lib/utils";
 import { ComparableCardButton } from "./comparable-card-dialog";
 import { REVIEW_TONE_STYLES } from "./review-status-style";
 import { ReviewStatusEditor } from "./review-status-editor";
 import { useExpandableDialog } from "./expandable-dialog";
+import { MARKET_ACCENT } from "./market-accent";
 
 const money = (value: number | null) => (value === null ? "—" : value.toLocaleString("es-MX", { style: "currency", currency: "MXN" }));
 const errorMessage = (error: unknown) =>
@@ -98,6 +100,9 @@ function ReviewRow(props: {
   valuationId: string;
   checklist: ComparableReviewChecklist;
   statuses: ReviewStatusItem[];
+  /** In the bulk review (V8.13): whether it is chosen, and choosing it. */
+  selected?: boolean;
+  onSelect?: (selected: boolean) => void;
 }) {
   const { comparable, type, warnings } = props.row;
   const stored = comparable.review ?? PENDING_REVIEW;
@@ -141,9 +146,23 @@ function ReviewRow(props: {
   };
 
   return (
-    <li className={cn("grid gap-2 rounded-md border p-3", REVIEW_TONE_STYLES[storedStatus.tone].row)} data-review-row={id ?? comparable.id} data-review-status={stored.status}>
+    <li
+      className={cn("grid gap-2 rounded-md border p-3", REVIEW_TONE_STYLES[storedStatus.tone].row, props.selected && "ring-2 ring-ring")}
+      data-review-row={id ?? comparable.id}
+      data-review-status={stored.status}
+    >
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
+        <div className="flex min-w-0 items-start gap-2">
+          {props.onSelect ? (
+            <Checkbox
+              className="mt-0.5"
+              checked={props.selected === true}
+              onCheckedChange={(checked) => props.onSelect?.(checked === true)}
+              aria-label={`Elegir ${id ?? `el comparable ${comparable.reference}`} para la revisión en lote`}
+              data-review-select=""
+            />
+          ) : null}
+          <div className="min-w-0">
           <p className="flex flex-wrap items-center gap-2 text-sm font-medium">
             <span className="font-mono">{id ?? "Sin número"}</span>
             <Badge variant="secondary">{COMPARABLE_TYPE_LABELS[type]} · {comparable.reference}</Badge>
@@ -154,6 +173,7 @@ function ReviewRow(props: {
             {money(comparable.price)} · {comparable.area ?? "—"} m² · {money(unitValue)} {isRentComparableType(type) ? "/m²/mes" : "/m²"}
             {comparable.contactName || comparable.contactPhone ? ` · ${[comparable.contactName, comparable.contactPhone].filter(Boolean).join(", ")}` : ""}
           </p>
+          </div>
         </div>
         <div className="flex flex-wrap gap-1">
           {comparable.url ? (
@@ -237,6 +257,75 @@ function ReviewRow(props: {
 }
 
 /**
+ * «Revisión en lote» (V8.13, 13:44 to 17:13: «una casilla de seleccionar
+ * todos los comparables… marcar todas las casillas… el estatus… y guardar
+ * revisión»): the comparables chosen take one state, with every check of the
+ * list marked when asked, saved once for all. Each one's notes stay.
+ */
+function BulkReviewBar(props: {
+  valuationId: string;
+  selected: ReviewRowDto[];
+  statuses: ReviewStatusItem[];
+  onClear: () => void;
+  onSaved: (reviews: Array<{ comparableId: string; review: ComparableReviewDto }>) => void;
+}) {
+  const [status, setStatus] = useState<ReviewStatus>("VERIFICADO");
+  const [markAll, setMarkAll] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const count = props.selected.length;
+  if (!count) return null;
+  // The state chosen, or the first of the firm's list when the firm took it out.
+  const chosen = props.statuses.find((item) => item.key === status) ?? props.statuses[0];
+  const markets = [...new Set(props.selected.map((row) => COMPARABLE_TYPE_LABELS[row.type].toLowerCase()))].join(", ");
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      const reviews = await api.market.saveReviews(props.valuationId, {
+        comparableIds: props.selected.map((row) => row.comparable.id), status: chosen.key, markAll,
+      });
+      props.onSaved(reviews);
+      toast.success(`Revisión guardada en ${reviews.length} comparable${reviews.length === 1 ? "" : "s"}: ${chosen.label}.`);
+    } catch (error) {
+      toast.error(errorMessage(error));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section
+      className="sticky bottom-0 z-20 grid gap-2 rounded-md border-2 border-ring bg-card p-3 shadow-lg"
+      aria-label="Revisión en lote"
+      data-bulk-review=""
+    >
+      <p className="text-sm font-semibold">
+        {count} comparable{count === 1 ? "" : "s"} seleccionado{count === 1 ? "" : "s"} <span className="font-normal text-muted-foreground">({markets})</span>
+      </p>
+      <div className="flex flex-wrap items-center gap-3">
+        <label className="flex items-center gap-1.5 text-sm">
+          Estado
+          <span className={cn("size-3 rounded-full", REVIEW_TONE_STYLES[chosen.tone].solid)} aria-hidden="true" />
+          <NativeSelect value={chosen.key} onChange={(event) => setStatus(event.target.value)} aria-label="Estado para los seleccionados" data-bulk-status="">
+            {props.statuses.map((item) => <NativeSelectOption key={item.key} value={item.key}>{item.label}</NativeSelectOption>)}
+          </NativeSelect>
+        </label>
+        <label className="flex items-center gap-1.5 text-sm">
+          <Checkbox checked={markAll} onCheckedChange={(checked) => setMarkAll(checked === true)} data-bulk-mark-all="" />
+          Marcar todas las casillas de la lista
+        </label>
+        <span className="flex-1" />
+        <Button type="button" size="sm" variant="ghost" disabled={saving} onClick={props.onClear}>Quitar selección</Button>
+        <Button type="button" size="sm" disabled={saving} onClick={() => void save()} data-bulk-save="">
+          {saving ? <Loader2 data-icon="inline-start" className="animate-spin" /> : <ClipboardCheck data-icon="inline-start" />}
+          Guardar revisión de {count}
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+/**
  * "Revisión de comparables": every comparable of the valuation, across its
  * markets, to check against its listing. The state changes no calculation and
  * blocks nothing; it is the appraiser's record of what he verified.
@@ -245,8 +334,14 @@ export function ComparableReviewDialog(props: {
   valuationId: string;
   readOnly: boolean;
   onReviewed: (comparableId: string, review: ComparableReviewDto) => void;
+  /** The market it is opened from: its comparables go first (V8.13, 13:04: «lo primero que me debe de aparecer es lo que estoy abriendo»). */
+  type?: ComparableType;
+  /** The firm's states after they were edited here, for the chips of the market. */
+  onStatuses?: (statuses: ReviewStatusItem[]) => void;
 }) {
   const [open, setOpen] = useState(false);
+  /** The comparables chosen for the review in bulk (V8.13), by id. */
+  const [selected, setSelected] = useState<ReadonlySet<string>>(() => new Set());
   const [rows, setRows] = useState<ReviewRowDto[] | null>(null);
   const [checklist, setChecklist] = useState<ComparableReviewChecklist>(DEFAULT_REVIEW_CHECKLIST);
   /** The firm's states (V8.12): edited here, for the whole firm. */
@@ -268,6 +363,7 @@ export function ComparableReviewDialog(props: {
     loading.current = attempt;
     setRows(null);
     setError(null);
+    setSelected(new Set());
     const current = () => loading.current === attempt;
     // The review never stays on "Cargando…": past the wait, it says so and offers to try again.
     const timer = window.setTimeout(() => {
@@ -297,6 +393,24 @@ export function ComparableReviewDialog(props: {
   const kept = (rows ?? []).flatMap((row) => (statuses.some((item) => item.key === statusOf(row)) ? [] : [reviewStatusOf(statusOf(row), null, row.comparable.review)]));
   const shownStatuses = [...statuses, ...kept.filter((item, index) => kept.findIndex((other) => other.key === item.key) === index)];
   const counts = shownStatuses.map((status) => [status, rows?.filter((row) => statusOf(row) === status.key).length ?? 0] as const);
+  const groups = shown ? groupByComparableType(shown, reviewMarketOrder(props.type)) : [];
+  const editable = !props.readOnly;
+  const choose = (ids: readonly string[], on: boolean) => setSelected((current) => {
+    const next = new Set(current);
+    for (const id of ids) {
+      if (on) next.add(id);
+      else next.delete(id);
+    }
+    return next;
+  });
+  const statusesChanged = (next: ReviewStatusItem[]) => {
+    setStatuses(next);
+    props.onStatuses?.(next);
+  };
+  const bulkSaved = (reviews: Array<{ comparableId: string; review: ComparableReviewDto }>) => {
+    for (const { comparableId, review } of reviews) saved(comparableId, review);
+    setSelected(new Set());
+  };
 
   return (
     <>
@@ -314,7 +428,7 @@ export function ComparableReviewDialog(props: {
             </DialogDescription>
           </DialogHeader>
           {editingStatuses ? (
-            <ReviewStatusEditor statuses={statuses} onSaved={setStatuses} onClose={() => setEditingStatuses(false)} />
+            <ReviewStatusEditor statuses={statuses} onSaved={statusesChanged} onClose={() => setEditingStatuses(false)} />
           ) : null}
           {rows ? (
             <div className="grid gap-2" data-review-filters>
@@ -343,16 +457,28 @@ export function ComparableReviewDialog(props: {
                   </Button>
                 ) : null}
               </div>
-              <div className="relative max-w-md">
-                <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
-                <Input
-                  type="search"
-                  value={query}
-                  placeholder="Buscar por número, ubicación, fuente, contacto o aviso"
-                  aria-label="Buscar comparables en la revisión"
-                  className="pl-8"
-                  onChange={(event) => setQuery(event.target.value)}
-                />
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="relative w-full max-w-md">
+                  <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden="true" />
+                  <Input
+                    type="search"
+                    value={query}
+                    placeholder="Buscar por número, ubicación, fuente, contacto o aviso"
+                    aria-label="Buscar comparables en la revisión"
+                    className="pl-8"
+                    onChange={(event) => setQuery(event.target.value)}
+                  />
+                </div>
+                {/* V8.13 (14:36): «seleccionar comparables de todos», then mark them at once below. */}
+                {editable && shown?.length ? (
+                  <label className="flex items-center gap-1.5 text-sm font-medium" data-review-select-all="">
+                    <Checkbox
+                      checked={shown.every((row) => selected.has(row.comparable.id))}
+                      onCheckedChange={(checked) => choose(shown.map((row) => row.comparable.id), checked === true)}
+                    />
+                    Seleccionar todos ({shown.length})
+                  </label>
+                ) : null}
               </div>
             </div>
           ) : null}
@@ -366,31 +492,62 @@ export function ComparableReviewDialog(props: {
             <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" /> Cargando los comparables…</p>
           ) : null}
           {shown ? (
-            <div className="grid gap-4">
-              {/* One list per market, under its title: land and buildings are not mixed. */}
-              {groupByComparableType(shown, COMPARABLE_TYPES).map((group) => (
-                <section key={group.type} className="grid gap-2" aria-labelledby={`review-group-${group.type}`} data-review-group={group.type}>
-                  <h3 id={`review-group-${group.type}`} className="border-b pb-1 font-display text-base font-semibold">
-                    {COMPARABLE_TYPE_LABELS[group.type]} <span className="text-sm font-normal text-muted-foreground tabular-nums">· {group.rows.length}</span>
-                  </h3>
-                  <ul className="grid gap-3">
-                    {group.rows.map((row) => (
-                      <ReviewRow
-                        key={row.comparable.id}
-                        row={row}
-                        readOnly={props.readOnly}
-                        valuationId={props.valuationId}
-                        checklist={checklist}
-                        statuses={statuses}
-                        onSaved={(review) => saved(row.comparable.id, review)}
-                      />
-                    ))}
-                  </ul>
-                </section>
-              ))}
+            <div className="grid gap-5">
+              {/*
+                One list per market, under its title: land and buildings are not mixed. V8.13 (12:39): the market it was opened
+                from first, each title big, in the colour of its market, and fixed at the top while its comparables scroll.
+              */}
+              {groups.map((group) => {
+                const ids = group.rows.map((row) => row.comparable.id);
+                const accent = MARKET_ACCENT[group.type];
+                return (
+                  <section key={group.type} className="grid gap-2" aria-labelledby={`review-group-${group.type}`} data-review-group={group.type}>
+                    <header
+                      className={cn("sticky top-0 z-10 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-md border-l-8 px-3 py-2 shadow-sm", accent.border, accent.here)}
+                      data-review-group-header={group.type}
+                    >
+                      <h3 id={`review-group-${group.type}`} className="font-display text-lg font-semibold">
+                        {COMPARABLE_TYPE_LABELS[group.type]} <span className="text-base font-normal tabular-nums">· {group.rows.length}</span>
+                      </h3>
+                      {group.type === props.type ? <Badge variant="outline" className="border-current">El mercado que abriste</Badge> : null}
+                      {editable ? (
+                        <label className="ml-auto flex items-center gap-1.5 text-sm font-medium" data-review-select-group={group.type}>
+                          <Checkbox checked={ids.every((id) => selected.has(id))} onCheckedChange={(checked) => choose(ids, checked === true)} />
+                          Seleccionar los de {COMPARABLE_TYPE_LABELS[group.type].toLowerCase()}
+                        </label>
+                      ) : null}
+                    </header>
+                    <ul className="grid gap-3">
+                      {group.rows.map((row) => (
+                        <ReviewRow
+                          // A review saved in bulk replaces what the row had on screen.
+                          key={`${row.comparable.id}:${row.comparable.review?.reviewedAt ?? ""}`}
+                          row={row}
+                          readOnly={props.readOnly}
+                          valuationId={props.valuationId}
+                          checklist={checklist}
+                          statuses={statuses}
+                          onSaved={(review) => saved(row.comparable.id, review)}
+                          selected={selected.has(row.comparable.id)}
+                          onSelect={editable ? (on) => choose([row.comparable.id], on) : undefined}
+                        />
+                      ))}
+                    </ul>
+                  </section>
+                );
+              })}
               {!rows?.length ? <p className="text-sm text-muted-foreground">El avalúo no tiene comparables.</p> : null}
               {rows?.length && !shown.length ? <p className="text-sm text-muted-foreground">Ningún comparable coincide con el filtro.</p> : null}
             </div>
+          ) : null}
+          {editable && rows ? (
+            <BulkReviewBar
+              valuationId={props.valuationId}
+              selected={(rows ?? []).filter((row) => selected.has(row.comparable.id))}
+              statuses={statuses}
+              onClear={() => setSelected(new Set())}
+              onSaved={bulkSaved}
+            />
           ) : null}
           <DialogFooter>
             <Button type="button" onClick={() => setOpen(false)}>Cerrar</Button>
