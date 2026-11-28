@@ -57,7 +57,7 @@ Todas las cuentas son de Álvaro Gutiérrez (Valuadores de los Altos), confirmad
 
 - **Hostinger, automático:** respaldo semanal del VPS completo, guardado fuera del servidor (en hPanel: VPS → Snapshots y respaldos). Se conservan los dos más recientes, de unos 15 GB cada uno; restaurar tarda alrededor de 1 h 10 min.
 - **Hostinger, snapshot manual:** uno a la vez, vence al día siguiente. Sirve como red de seguridad antes de un mantenimiento, no como respaldo de largo plazo.
-- **Base de datos:** volcados manuales antes de cada despliegue en `/srv/backups/valuos/` (ver [OPERACION.md](OPERACION.md)). Todavía no hay una tarea programada ni una copia diaria fuera del servidor.
+- **Base de datos:** volcados manuales antes de cada despliegue en `/srv/backups/valuos/` (ver [OPERACION.md](OPERACION.md)). Todavía no hay una tarea programada ni una copia diaria fuera del servidor. (Nota posterior: la auditoría del 21 nov 2026 encontró el respaldo diario con `valuaxis-db-backup.timer`; la copia fuera del servidor sigue pendiente, ver [RESPALDOS.md](RESPALDOS.md).)
 
 ## Pendientes
 
