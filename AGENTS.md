@@ -6,7 +6,7 @@ Valuaxis Soft es un SaaS de avalúos inmobiliarios y de maquinaria para despacho
 
 1. `docs/CONTRIBUIR.md`: quién hace qué (imSoft y devpware), cómo arrancar y las reglas de ramas, PR y migraciones. Las reglas de ese archivo mandan sobre esta guía.
 2. `docs/ARCHITECTURE.md` y `docs/MODULES.md`: cómo está organizado el código.
-3. Según la tarea: `docs/MOTOR-CALCULO.md` (cálculo), `docs/VALUATION_SECTIONS.md` (editor y dictamen), `docs/COMPARABLES.md`, `docs/COBRO.md`, `docs/ACREDITACION.md`, `docs/SECURITY.md`, `docs/AUTHORIZATION.md`, `docs/ROUTES.md`, `docs/OPERACION.md`, `docs/TESTING.md`, `docs/DISENO.md` (sistema visual: colores, tipografía, movimiento y tono), `docs/CUENTAS.md` (baja, suspensión de cuentas y guarda de los avalúos).
+3. Según la tarea: `docs/MOTOR-CALCULO.md` (cálculo), `docs/VALUATION_SECTIONS.md` (editor y dictamen), `docs/COMPARABLES.md`, `docs/COBRO.md`, `docs/ACREDITACION.md`, `docs/SECURITY.md`, `docs/AUTHORIZATION.md`, `docs/ROUTES.md`, `docs/OPERACION.md`, `docs/TESTING.md`, `docs/DISENO.md` (sistema visual: colores, tipografía, movimiento y tono), `docs/CUENTAS.md` (baja, suspensión de cuentas y guarda de los avalúos), `docs/INCIDENTES.md` (procedimiento de incidentes), `docs/RESPALDOS.md` (respaldos y recuperación), `docs/ACCESOS.md` (cuentas de la operación, llaves y rotación).
 
 ## Stack
 

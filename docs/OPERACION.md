@@ -2,7 +2,11 @@
 
 Procedimientos para el VPS de producción descrito en [INFRAESTRUCTURA.md](INFRAESTRUCTURA.md). Todos se corren como root en la consola del servidor. Los que modifican algo piden respaldo previo.
 
+Relacionados: [RESPALDOS.md](RESPALDOS.md) (respaldos y recuperación), [INCIDENTES.md](INCIDENTES.md) (qué hacer cuando algo falla) y [ACCESOS.md](ACCESOS.md) (cuentas, llaves y rotación).
+
 ## 1. Respaldo diario de la base
+
+> **Nota posterior (21 nov 2026):** en el servidor ya existía el respaldo diario con el timer de systemd `valuaxis-db-backup.timer` (hacia las 02:32, volcados en `/srv/backups/valuos/database/daily/`); el cron de las 03:30 de abajo se quitó y **no debe instalarse**. El estado actual, la prueba de restauración y la copia fuera del servidor (pendiente) están en [RESPALDOS.md](RESPALDOS.md). Lo que sigue queda como referencia de la instalación original.
 
 Instalar una vez:
 
